@@ -1,6 +1,9 @@
+import "@/shared/polyfills/temporal";
+import { DotyposReservationIdSchema } from "@deskohub/dotypos";
 import { testEmailAddress } from "@deskohub/test-email";
 import { createElement } from "react";
 import { CampaignBodyContent } from "@/features/email-campaigns/body/campaign-body-content";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { WorkspaceCampaignFooter } from "../_components/workspace-campaign-footer";
 import type { ContactBusinessEmailProps } from "../contact-business";
@@ -8,6 +11,7 @@ import type { ContactConfirmationEmailProps } from "../contact-confirmation";
 import type { CustomerReservationEmailProps } from "../customer-reservation";
 import type { InvoiceDeliveryEmailProps } from "../invoice-delivery";
 import type { ReservationAuthorEmailProps } from "../reservation-author";
+import type { ReservationCancellationEmailProps } from "../reservation-cancellation";
 import type { ReservationNotificationEmailProps } from "../reservation-notification";
 import type { WorkspaceCampaignEmailProps } from "../workspace-campaign";
 
@@ -15,9 +19,6 @@ const customerEmail = testEmailAddress("customer");
 
 const customerMessage =
   "Hello,\n\nI'd like to confirm that the Profi pass includes both monitors and coffee. Thank you!";
-
-const workspaceLocationMapUrl =
-  "https://workspace.deskohub.cz/workspace-location-map.jpeg";
 
 export const contactBusinessPreviewProps = {
   name: "Ada Lovelace",
@@ -34,98 +35,59 @@ export const contactConfirmationPreviewProps = {
   message: customerMessage,
 } satisfies ContactConfirmationEmailProps;
 
+const previewReservation = {
+  id: workspaceReservationIdSchema.make("workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C"),
+  dotyposReservationId: DotyposReservationIdSchema.make("123456789"),
+  reservationDetails: {
+    kind: "cowork",
+    entryTier: "profi",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+  },
+  reservedFrom: Temporal.Instant.from("2026-06-12T07:00:00Z"),
+  reservedUntil: Temporal.Instant.from("2026-06-13T07:00:00Z"),
+  seats: 1,
+  placement: { table: { mode: "assigned", name: "12" } },
+} satisfies CustomerReservationEmailProps["reservation"];
+
 export const customerReservationPreviewProps = {
   locale: "en-US",
-  preview: "Your Deskohub Workspace reservation is confirmed",
-  heading: "Your workspace reservation is confirmed for Friday, June 12",
-  access: {
-    button: "Show access code",
-    url: "https://workspace.deskohub.cz/en-US/reservation/access/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C?accessToken=preview-token",
-  },
-  invoice: {
-    label: "Invoice",
-    download: "Download",
-    url: "https://workspace.deskohub.cz/en-US/reservation/invoice/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C?accessToken=preview-token",
-  },
-  labels: {
-    location: "Where to go",
-    directions: "Open route in Google Maps",
-    table: "Table",
-    tables: "Tables",
-    network: "Wi-Fi",
-    networkName: "Network name",
-    networkPassword: "Password",
-  },
-  location: {
-    address: "Turnovská 430/10, 180 00 Praha 8 - Libeň",
-    directionsUrl:
-      "https://www.google.com/maps/dir/?api=1&destination=50.103277,14.479023",
-    mapImageSrc: workspaceLocationMapUrl,
-  },
-  table: {
-    mode: "assigned",
-    name: "12",
-  },
+  reservation: previewReservation,
+  accessUrl:
+    "https://workspace.deskohub.cz/en-US/reservation/access/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C?accessToken=preview-token",
+  invoiceUrl:
+    "https://workspace.deskohub.cz/en-US/reservation/invoice/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C?accessToken=preview-token",
   network: {
     ssid: "Deskohub Workspace",
     password: "Workspace42",
     qrImageSrc:
       "https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=WIFI%3AT%3AWPA%3BS%3ADeskohub%20Workspace%3BP%3AWorkspace42%3B%3B",
   },
-  details: [
-    { label: "Entry tier", value: "Profi Workstation" },
-    { label: "Reservation date", value: "Friday, June 12, 2026" },
-    { label: "Coffee", value: "Yes" },
-    { label: "Monitors", value: "2x 27″ QHD" },
-    { label: "Reservation reference", value: "123456789" },
-    {
-      label: "Order reference",
-      value: "workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C",
-    },
-  ],
-  followUp: `If you want to add anything, reply or write to ${workspaceSiteConstants.contact.infoEmail}.`,
 } satisfies CustomerReservationEmailProps;
 
 export const reservationAuthorPreviewProps = {
   locale: "en-US",
-  preview: "Your reservation for Ada Lovelace is confirmed",
-  heading: "You booked Profi Workstation for Ada Lovelace",
-  body: "We emailed the access details to the reservation's customer separately.",
-  status: {
-    button: "View reservation",
-    url: "https://workspace.deskohub.cz/en-US/reservation/status/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C",
+  reservation: {
+    ...previewReservation,
+    customer: { firstName: "Ada", lastName: "Lovelace", companyName: null },
   },
-  labels: {
-    location: "Where to go",
-    directions: "Open route in Google Maps",
-    table: "Table",
-    tables: "Tables",
-  },
-  location: customerReservationPreviewProps.location,
-  table: customerReservationPreviewProps.table,
-  details: customerReservationPreviewProps.details,
-  followUp: customerReservationPreviewProps.followUp,
+  statusUrl:
+    "https://workspace.deskohub.cz/en-US/reservation/status/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C",
 } satisfies ReservationAuthorEmailProps;
 
 export const reservationNotificationPreviewProps = {
-  preview: "Zaplacená rezervace čeká na kontrolu",
-  heading: "Zaplacená workspace rezervace",
-  body: "Zaplacená Workspace rezervace je připravená ke kontrole týmem.",
-  details: [
-    { label: "Jméno", value: "Ada Lovelace" },
-    { label: "Email", value: customerEmail },
-    { label: "Telefon", value: "+420 123 456 789" },
-    { label: "Vstup", value: "Profi Workstation" },
-    { label: "Datum rezervace", value: "pátek 12. června 2026" },
-    { label: "Káva", value: "Ano" },
-    { label: "Monitory", value: "2x 27″ QHD" },
-    { label: "Číslo rezervace", value: "123456789" },
-    {
-      label: "Číslo objednávky",
-      value: "workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C",
-    },
-  ],
+  reservation: previewReservation,
+  customer: {
+    name: "Ada Lovelace",
+    email: customerEmail,
+    phone: "+420 123 456 789",
+  },
 } satisfies ReservationNotificationEmailProps;
+
+export const reservationCancellationPreviewProps = {
+  locale: "en-US",
+  reservation: previewReservation,
+} satisfies ReservationCancellationEmailProps;
 
 export const invoiceDeliveryPreviewProps = {
   invoiceNumber: "WS-FV-2026-000003",

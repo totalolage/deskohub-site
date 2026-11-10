@@ -16,7 +16,7 @@ import {
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import { ReservationFulfillment } from "../fulfillment/reservation-fulfillment.service";
-import { DotyposHoldRelease } from "../holds/dotypos-hold-release.service";
+import { UnpaidHoldRelease } from "../holds/unpaid-hold-release.service";
 import {
   LatePaymentRecoveryRepository,
   LatePaymentRecoveryStateError,
@@ -176,7 +176,7 @@ const makeRecoveryHarness = (options: {
     dotyposCustomerId: "dotypos-customer-id",
   } as never;
   const layer = LatePaymentRecoveryService.Default.pipe(
-    Layer.provide(DotyposHoldRelease.Default),
+    Layer.provide(UnpaidHoldRelease.Default),
     Layer.provide(
       Layer.mergeAll(
         Layer.mock(LatePaymentRecoveryRepository, {
@@ -563,80 +563,6 @@ describe("LatePaymentRecoveryService with an expired or released hold", () => {
         failureCode: "late_payment_discount_unavailable",
       })
     );
-  });
-
-  test("keeps the recovery retryable when Dotypos cannot release the original hold", async () => {
-    const harness = makeRecoveryHarness({
-      reservation: expiredHeldReservation,
-      originalStatus: "NEW",
-      cancelReservation: () => Effect.fail(new Error("Dotypos unavailable")),
-    });
-
-    const result = await harness.recover();
-
-    expect(result._tag).toBe("Failure");
-    expect(harness.events).toEqual([
-      "getReservationStatus",
-      "claimCancellation",
-      "cancelReservation:dotypos-reservation-id",
-      "markCancellationFailed",
-    ]);
-    expect(harness.spies.requireRefund).not.toHaveBeenCalled();
-    expect(harness.spies.createReservation).not.toHaveBeenCalled();
-  });
-
-  test("requires review instead of cancelling an expired hold that Dotypos reports confirmed", async () => {
-    const harness = makeRecoveryHarness({
-      reservation: expiredHeldReservation,
-      originalStatus: "CONFIRMED",
-    });
-
-    const result = await harness.recover();
-
-    expect(result).toMatchObject({
-      _tag: "Success",
-      success: "review_required",
-    });
-    expect(harness.spies.cancelReservation).not.toHaveBeenCalled();
-    expect(harness.spies.claimCancellation).not.toHaveBeenCalled();
-  });
-
-  test("finishes a stale hold cancellation that a crashed run left behind", async () => {
-    const harness = makeRecoveryHarness({
-      reservation: {
-        ...expiredHeldReservation,
-        reservationState: "cancelling",
-        updatedAt: Temporal.Now.instant().subtract({ hours: 1 }),
-      },
-      originalStatus: "NEW",
-    });
-
-    const result = await harness.recover();
-
-    expect(result).toMatchObject({ _tag: "Success", success: "recovered" });
-    expect(harness.events).toEqual([
-      "getReservationStatus",
-      "cancelReservation:dotypos-reservation-id",
-      "markCancelled",
-      ...recreationEvents,
-    ]);
-  });
-
-  test("waits for a fresh hold cancellation owned by cleanup", async () => {
-    const harness = makeRecoveryHarness({
-      reservation: {
-        ...expiredHeldReservation,
-        reservationState: "cancelling",
-        updatedAt: Temporal.Now.instant(),
-      },
-      originalStatus: "NEW",
-    });
-
-    const result = await harness.recover();
-
-    expect(result._tag).toBe("Failure");
-    expect(harness.spies.cancelReservation).not.toHaveBeenCalled();
-    expect(harness.spies.ensureAvailable).not.toHaveBeenCalled();
   });
 });
 

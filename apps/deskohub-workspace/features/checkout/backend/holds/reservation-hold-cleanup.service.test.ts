@@ -17,9 +17,7 @@ describe("ReservationHoldCleanupService", () => {
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
     );
-    const { DotyposHoldRelease } = await import(
-      "./dotypos-hold-release.service"
-    );
+    const { UnpaidHoldRelease } = await import("./unpaid-hold-release.service");
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -60,7 +58,7 @@ describe("ReservationHoldCleanupService", () => {
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupService.Default.pipe(
-          Layer.provide(DotyposHoldRelease.Default),
+          Layer.provide(UnpaidHoldRelease.Default),
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -97,9 +95,7 @@ describe("ReservationHoldCleanupService", () => {
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
     );
-    const { DotyposHoldRelease } = await import(
-      "./dotypos-hold-release.service"
-    );
+    const { UnpaidHoldRelease } = await import("./unpaid-hold-release.service");
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -142,7 +138,7 @@ describe("ReservationHoldCleanupService", () => {
       }).pipe(
         Effect.provide(
           ReservationHoldCleanupService.Default.pipe(
-            Layer.provide(DotyposHoldRelease.Default),
+            Layer.provide(UnpaidHoldRelease.Default),
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -193,9 +189,7 @@ describe("ReservationHoldCleanupService", () => {
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
     );
-    const { DotyposHoldRelease } = await import(
-      "./dotypos-hold-release.service"
-    );
+    const { UnpaidHoldRelease } = await import("./unpaid-hold-release.service");
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -230,7 +224,7 @@ describe("ReservationHoldCleanupService", () => {
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupService.Default.pipe(
-          Layer.provide(DotyposHoldRelease.Default),
+          Layer.provide(UnpaidHoldRelease.Default),
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
@@ -296,9 +290,7 @@ describe("ReservationHoldCleanupService", () => {
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
     );
-    const { DotyposHoldRelease } = await import(
-      "./dotypos-hold-release.service"
-    );
+    const { UnpaidHoldRelease } = await import("./unpaid-hold-release.service");
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -318,7 +310,7 @@ describe("ReservationHoldCleanupService", () => {
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupService.Default.pipe(
-          Layer.provide(DotyposHoldRelease.Default),
+          Layer.provide(UnpaidHoldRelease.Default),
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
