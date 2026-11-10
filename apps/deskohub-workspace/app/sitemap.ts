@@ -8,7 +8,8 @@ import { getPublicPageContentDate } from "@/features/public-pages/public-page-de
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  if (env.VERCEL_ENV !== "production") return [];
+  // proof(1190): served on preview too.
+  if (env.VERCEL_ENV === "development") return [];
 
   // Release gates change without a deploy. Evaluate them per request, as the
   // gated pages do, so a build-time value never lists a page that 404s. A

@@ -15,6 +15,7 @@ import {
 } from "../generated/contract";
 import { getGlobalWorkspaceFeatureFlagValue } from "./feature-flag-evaluation-mode.server";
 import { nodeFeatureFlags } from "./node";
+import { isProof1190Outage } from "./proof-1190-outage";
 import { readRemoteEvaluationPolicy } from "./remote-evaluation-policy.server";
 import {
   type FeatureFlagAudience,
@@ -157,6 +158,15 @@ const evaluateRemotely = (
   keys: ReadonlyArray<PostHogFeatureFlagKey>
 ): Effect.Effect<RequestFlagValues, PostHogFeatureFlagEvaluationError> => {
   if (keys.length === 0) return Effect.succeed(noFlagValues);
+  // proof(1190): production's remote evaluation, failing as PostHog does.
+  if (isProof1190Outage()) {
+    return Effect.fail(
+      new PostHogFeatureFlagEvaluationError({
+        message: "proof(1190): simulated PostHog flag evaluation outage",
+        cause: undefined,
+      })
+    );
+  }
   if (readRemoteEvaluationPolicy() === "disabled") {
     return closeWithoutRemoteEvaluation(keys);
   }

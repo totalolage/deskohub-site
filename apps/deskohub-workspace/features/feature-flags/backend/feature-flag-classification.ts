@@ -13,6 +13,7 @@ import {
   type PostHogFeatureFlagKey,
   postHogFeatureFlags,
 } from "../generated/contract";
+import { proof1190Definitions, proof1190PhaseAt } from "./proof-1190-outage";
 
 /** How old a generated snapshot may be and still stand in for PostHog. */
 export const featureFlagSnapshotMaxAge = Duration.days(7);
@@ -58,12 +59,18 @@ export const makeFeatureFlagClassifier = ({
   let reportedUnusableSnapshot = false;
 
   const fallback = Effect.gen(function* () {
-    if (lastKnown) {
+    const now = yield* Clock.currentTimeMillis;
+    // proof(1190): no last-known classification and a stale snapshot.
+    const outage = proof1190PhaseAt(now) === "undecidable";
+    if (lastKnown && !outage) {
       return { source: "last-known", constants: lastKnown } as const;
     }
 
-    const now = yield* Clock.currentTimeMillis;
-    if (snapshot && isFresh(Date.parse(snapshot.generatedAt), now)) {
+    if (
+      snapshot &&
+      !outage &&
+      isFresh(Date.parse(snapshot.generatedAt), now)
+    ) {
       return {
         source: "snapshot",
         constants: contractConstants(Object.entries(snapshot.constantValues)),
@@ -90,7 +97,8 @@ export const makeFeatureFlagClassifier = ({
     >;
     readonly overrides: ConstantFeatureFlagValues;
   }): Effect.Effect<FeatureFlagClassification> =>
-    definitions.pipe(
+    Clock.currentTimeMillis.pipe(
+      Effect.flatMap((now) => proof1190Definitions(now, definitions)),
       Effect.map((definitions) =>
         contractConstants(
           definitions.map(({ constantEnabledValue, key }) => [
@@ -114,7 +122,8 @@ export const makeFeatureFlagClassifier = ({
       Effect.map(
         ({ constants, source }): FeatureFlagClassification => ({
           source,
-          values: { ...constants, ...overrides },
+          // proof(1190): overrides ignored, as production rejects them.
+          values: { ...constants, ...(overrides && {}) },
         })
       )
     );
