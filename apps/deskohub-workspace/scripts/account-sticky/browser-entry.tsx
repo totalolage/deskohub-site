@@ -1,3 +1,4 @@
+import { baseLocale, supportedLocales } from "@deskohub/i18n/locale-registry";
 import { type ReactNode, useLayoutEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AccountShell } from "@/features/account/components/shell/account-shell";
@@ -7,8 +8,6 @@ import {
 } from "@/features/account/sections";
 import { type Locale, m } from "@/features/i18n";
 import "../../app/globals.css";
-
-const fixtureLocales = ["en-US", "cs-CZ"] as const satisfies readonly Locale[];
 
 type ContentVariant = "short" | "tall";
 type SidebarVariant = "normal" | "tall";
@@ -48,7 +47,7 @@ const readVariant = <T extends string>(
 
 const readFixtureVariants = () => ({
   content: readVariant("content", ["short", "tall"], "short"),
-  locale: readVariant("locale", fixtureLocales, "en-US"),
+  locale: readVariant("locale", supportedLocales, baseLocale),
   sidebar: readVariant("sidebar", ["normal", "tall"], "normal"),
 });
 

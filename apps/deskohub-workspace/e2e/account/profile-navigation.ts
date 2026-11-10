@@ -5,6 +5,7 @@ import {
   type AccountSection,
   accountSectionLabel,
 } from "@/features/account/sections";
+import { baseLocale, defaultPhoneRegion } from "@/features/i18n";
 import {
   type WorkspaceE2EProfileNavigationDiagnosticCode,
   workspaceE2EError,
@@ -127,7 +128,7 @@ export async function verifyProfileNavigation(
       }),
     };
     const canonicalOriginalPhone = Option.getOrThrowWith(
-      parsePhoneNumber(originalProfile.phone),
+      parsePhoneNumber(originalProfile.phone, defaultPhoneRegion(baseLocale)),
       () => new Error("profile phone is not a valid canonical phone number")
     );
     await selectSection("billing");

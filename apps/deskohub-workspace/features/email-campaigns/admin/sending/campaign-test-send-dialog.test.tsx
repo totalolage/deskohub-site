@@ -235,7 +235,7 @@ describe("CampaignTestSendDialog", () => {
       m.emailCampaignsTestSendSent(
         {
           count: 4,
-          languages: describeCampaignLocales(["cs-CZ", "en-US"], locale),
+          languages: describeCampaignLocales(["cs-CZ", "en-US"]),
         },
         { locale }
       )
@@ -322,9 +322,7 @@ describe("CampaignTestSendDialog", () => {
     const view = await openDialog();
 
     expect(
-      dialogOf(view).getByText(
-        describeCampaignLocales(["cs-CZ", "en-US"], locale)
-      )
+      dialogOf(view).getByText(describeCampaignLocales(["cs-CZ", "en-US"]))
     ).toBeTruthy();
     expect(
       dialogOf(view).queryByText(

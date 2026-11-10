@@ -1,5 +1,7 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { formatPhoneNumber, parsePhoneNumber } from "@deskohub/phone-number";
 import { Context, Effect, Layer, Match, Option, Schema } from "effect";
+import { baseLocale, defaultPhoneRegion } from "@/features/i18n";
 import {
   reservationCustomerNameSchema,
   reservationCustomerPhoneSchema,
@@ -70,6 +72,27 @@ const decodeContactField = <S extends Schema.Decoder<string>>(
   value: string
 ) => Option.getOrNull(Schema.decodeUnknownOption(schema)(value));
 
+// The Dotypos customers are the business's, in the base locale's market: the
+// Workspace writes their phones in E.164 form, and staff enter others at the
+// till, where a number without a country calling code is a national one of
+// the base locale's region.
+const storedPhoneRegion = defaultPhoneRegion(baseLocale);
+const storedPhoneSchema = reservationCustomerPhoneSchema(storedPhoneRegion);
+
+/**
+ * A stored profile phone as the contact books and prefills it, when it holds
+ * a valid number: as stored when it has a country calling code, otherwise in
+ * international form, so a checkout in any locale reads the same number.
+ */
+const toContactPhone = (stored: string) => {
+  const phone = decodeContactField(storedPhoneSchema, stored);
+  if (phone === null || phone.startsWith("+")) return phone;
+  return Option.match(parsePhoneNumber(phone, storedPhoneRegion), {
+    onNone: () => phone,
+    onSome: formatPhoneNumber,
+  });
+};
+
 /** A linked profile as the reservation contact its account books with. */
 const toContact = (
   account: CurrentLinkedAccount,
@@ -89,9 +112,7 @@ const toContact = (
     dotyposCustomerId: account.dotyposCustomerId,
     name,
     email: account.email,
-    phone: profile.phone
-      ? decodeContactField(reservationCustomerPhoneSchema, profile.phone)
-      : null,
+    phone: profile.phone ? toContactPhone(profile.phone) : null,
   } satisfies CustomerAccountContact;
 };
 

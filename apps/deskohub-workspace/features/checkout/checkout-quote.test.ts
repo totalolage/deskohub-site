@@ -196,6 +196,20 @@ describe("cowork reservation quotes", () => {
     });
   });
 
+  test("fingerprint leaves out the staff label, so a quote signed before it existed still matches", () => {
+    const application = percentageApplication();
+    const quoteWith = (discount: AppliedDiscount["discount"]) =>
+      buildCoworkReservationQuote(
+        { entryTier: "open-space", coffee: false },
+        { discountQuote: discountQuote([{ ...application, discount }]) }
+      ).fingerprint;
+
+    expect(application.discount).not.toHaveProperty("staffLabel");
+    expect(
+      quoteWith({ ...application.discount, staffLabel: "Letní sleva" })
+    ).toBe(quoteWith(application.discount));
+  });
+
   test("fingerprint includes the complete generic discount snapshot", () => {
     const application = percentageApplication();
     const fingerprint = buildCoworkReservationQuote(

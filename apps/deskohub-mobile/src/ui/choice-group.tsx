@@ -1,7 +1,8 @@
 import { type ComponentRef, useId, useRef } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { theme } from "../theme";
 import { choiceIndexForKey, tabStopIndex } from "./choice-group-keys";
+import { Text } from "./text";
 
 export type Choice<T extends string> = {
   readonly value: T;

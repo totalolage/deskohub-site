@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { theme } from "../../theme";
+import { Text } from "../../ui/text";
 
 /**
  * The customer's explicit "I understand" before a destructive action: the

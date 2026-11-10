@@ -4,16 +4,33 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Result } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
+import type { Locale } from "@/features/i18n";
+import type {
+  CustomerAccountAccessError,
+  CustomerAccountId,
+} from "../customer-account";
 import {
   type CustomerAccountSectionsFixture,
   makeCustomerAccountSections,
   sectionAccountId,
 } from "./customer-account-sections.test-utils";
 import { saveAccountLocalePreference } from "./customer-locale-preference";
+import { CustomerLocalePreference } from "./customer-locale-preference.service";
 
 const save = (
   fixture: CustomerAccountSectionsFixture,
-  options: { readonly writeFails?: boolean } = {}
+  options: {
+    readonly writeFails?: boolean;
+    /** Saves through this instead of `saveAccountLocalePreference` itself. */
+    readonly through?: (
+      accountId: CustomerAccountId,
+      locale: Locale
+    ) => Effect.Effect<
+      void,
+      CustomerAccountAccessError,
+      CustomerLocalePreference
+    >;
+  } = {}
 ) => {
   const writes: string[] = [];
   const sections = makeCustomerAccountSections(fixture);
@@ -38,19 +55,23 @@ const save = (
       }),
     }),
   };
-  const run = saveAccountLocalePreference(sectionAccountId, "en-US").pipe(
-    Effect.result,
-    Effect.provide(
-      Layer.mergeAll(
-        Layer.succeed(
-          WorkspaceDatabase,
-          WorkspaceDatabase.make(fakeDb as never)
-        ),
-        sections.layer
-      )
-    ),
-    Effect.runPromise
+  const dependencies = Layer.mergeAll(
+    Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.make(fakeDb as never)),
+    sections.layer
   );
+  const run = (
+    options.through
+      ? options
+          .through(sectionAccountId, "en-US")
+          .pipe(
+            Effect.provide(
+              CustomerLocalePreference.Default.pipe(Layer.provide(dependencies))
+            )
+          )
+      : saveAccountLocalePreference(sectionAccountId, "en-US").pipe(
+          Effect.provide(dependencies)
+        )
+  ).pipe(Effect.result, Effect.runPromise);
   return { run, writes, events: sections.events };
 };
 
@@ -96,5 +117,35 @@ describe("saveAccountLocalePreference", () => {
     expect(Result.isFailure(outcome) && outcome.failure.cause?.code).toBe(
       "account-locale-preference.write"
     );
+  });
+});
+describe("CustomerLocalePreference", () => {
+  const saveThroughService = (fixture: CustomerAccountSectionsFixture) =>
+    save(fixture, {
+      through: (accountId, locale) =>
+        Effect.flatMap(CustomerLocalePreference, (preference) =>
+          preference.save(accountId, locale)
+        ),
+    });
+
+  test("saves through the account's section", async () => {
+    const { run, writes } = saveThroughService({ session: {} });
+
+    expect(Result.isSuccess(await run)).toBe(true);
+    expect(writes).toEqual(["en-US"]);
+  });
+
+  test("refuses a deletion-marked account without writing", async () => {
+    const { run, writes } = saveThroughService({
+      session: {},
+      activityState: "deletion-requested",
+    });
+
+    const outcome = await run;
+    expect(Result.isFailure(outcome) && outcome.failure).toMatchObject({
+      reason: "link-required",
+      linkReason: "deletion-requested",
+    });
+    expect(writes).toEqual([]);
   });
 });

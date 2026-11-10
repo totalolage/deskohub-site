@@ -23,6 +23,9 @@ test("revalidates the page in every locale", async () => {
 
   expect(revalidatedPaths.sort()).toEqual([
     "/cs-CZ/admin/invoices/invoice-id",
+    "/de-DE/admin/invoices/invoice-id",
     "/en-US/admin/invoices/invoice-id",
+    "/sk-SK/admin/invoices/invoice-id",
+    "/uk-UA/admin/invoices/invoice-id",
   ]);
 });

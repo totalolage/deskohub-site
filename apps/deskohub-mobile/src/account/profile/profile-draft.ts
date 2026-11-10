@@ -1,4 +1,8 @@
 import {
+  baseLocale,
+  getLocaleDefinition,
+} from "@deskohub/i18n/locale-registry";
+import {
   formatPhoneNumber,
   isPhoneNumber,
   parsePhoneNumber,
@@ -103,12 +107,18 @@ export const emptyProfileDraft: ProfileDraft = {
   country: "",
 };
 
+// A phone without a country calling code is read in the region the customer
+// API's profile schemas read it in.
+const phoneRegion = getLocaleDefinition(baseLocale).phoneRegion;
+
 // The Workspace stores a phone number in E.164 form; the form shows it for
 // reading. Any other stored text, such as a legacy value with a label, shows
 // as stored.
 const readablePhone = (stored: string) =>
   Option.match(
-    Option.filter(parsePhoneNumber(stored), () => isPhoneNumber(stored)),
+    Option.filter(parsePhoneNumber(stored, phoneRegion), () =>
+      isPhoneNumber(stored, phoneRegion)
+    ),
     {
       onNone: () => stored,
       onSome: formatPhoneNumber,
@@ -144,8 +154,8 @@ export const completionDraftOf = (
 // entered.
 const samePhone = (left: string, right: string) =>
   left === right ||
-  Option.exists(parsePhoneNumber(left), (phone) =>
-    Option.contains(parsePhoneNumber(right), phone)
+  Option.exists(parsePhoneNumber(left, phoneRegion), (phone) =>
+    Option.contains(parsePhoneNumber(right, phoneRegion), phone)
   );
 
 /**

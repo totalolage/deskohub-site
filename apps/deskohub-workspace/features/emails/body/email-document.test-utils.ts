@@ -1,3 +1,4 @@
+import { mapSupportedLocales } from "@deskohub/i18n/locale-registry";
 import { testEmailAddress } from "@deskohub/test-email";
 import {
   type EmailCustomerField,
@@ -84,6 +85,57 @@ export const emailFixtureWords = {
     groupPoints: "Slevové body",
     offer: "Rezervovat s kódem",
     button: "Rezervovat",
+  },
+  "de-DE": {
+    subject: "Herbstneuigkeiten für ",
+    preheader: "Neue Schreibtische und längere Öffnungszeiten",
+    title: "Herbstneuigkeiten",
+    hello: "Hallo ",
+    events: "unsere Veranstaltungen",
+    visits: "Besuche: ",
+    member: " Mitglied: ",
+    steps: ["Wähle einen Termin", "Bezahle online", "Bring jemanden mit"],
+    alt: "Der neue Besprechungsraum",
+    contactName: "Name",
+    contactEmail: "E-Mail",
+    groupName: "Gruppe",
+    groupPoints: "Rabattpunkte",
+    offer: "Mit dem Code buchen",
+    button: "Jetzt buchen",
+  },
+  "uk-UA": {
+    subject: "Осінні новини для ",
+    preheader: "Нові столи й довші години роботи",
+    title: "Осінні новини",
+    hello: "Вітаємо, ",
+    events: "наші події",
+    visits: "Відвідування: ",
+    member: " Учасник: ",
+    steps: ["Оберіть дату", "Оплатіть онлайн", "Приведіть друга"],
+    alt: "Нова переговорна кімната",
+    contactName: "Ім’я",
+    contactEmail: "Електронна пошта",
+    groupName: "Група",
+    groupPoints: "Знижкові бали",
+    offer: "Забронювати з кодом",
+    button: "Забронювати",
+  },
+  "sk-SK": {
+    subject: "Jesenné novinky pre ",
+    preheader: "Nové stoly a predĺžené otváracie hodiny",
+    title: "Jesenné novinky",
+    hello: "Ahoj ",
+    events: "naše podujatia",
+    visits: "Návštevy: ",
+    member: " Člen: ",
+    steps: ["Vyber termín", "Zaplať online", "Priveď kamaráta"],
+    alt: "Nová zasadačka",
+    contactName: "Meno",
+    contactEmail: "E-mail",
+    groupName: "Skupina",
+    groupPoints: "Zľavové body",
+    offer: "Rezervovať s kódom",
+    button: "Rezervovať",
   },
 } as const satisfies Record<Locale, Words>;
 
@@ -224,10 +276,9 @@ export const emailDocumentFixture: EmailDocument = Schema.decodeUnknownSync(
       href: "https://deskohub.cz/rezervace",
     },
   ],
-  translations: {
-    "en-US": translation(emailFixtureWords["en-US"]),
-    "cs-CZ": translation(emailFixtureWords["cs-CZ"]),
-  },
+  translations: mapSupportedLocales((locale) =>
+    translation(emailFixtureWords[locale])
+  ),
   values: [
     {
       name: "first_name",

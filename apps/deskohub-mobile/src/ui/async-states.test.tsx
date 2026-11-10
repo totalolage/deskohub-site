@@ -3,14 +3,14 @@ import { createElement, type ReactNode } from "react";
 import { AccessibilityInfo, Platform } from "react-native";
 import { clientRoot } from "../testing/client-root";
 import { ErrorState, RefreshingIndicator } from "./async-states";
-import { elementTree, findAll } from "./testing/element-tree";
+import { elementTree, findAll, hostTree } from "./testing/element-tree";
 
 /** The component's live region: its only Text with a role. */
 const liveRegion = <Props,>(
   component: Parameters<typeof elementTree<Props>>[0],
   props: Props
 ) =>
-  findAll(elementTree(component, props), "Text").find(
+  findAll(hostTree(elementTree(component, props)), "Text").find(
     (text) => text.props.role !== undefined
   )?.props;
 

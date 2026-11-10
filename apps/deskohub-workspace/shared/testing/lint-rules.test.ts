@@ -381,6 +381,20 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
     ],
   },
   {
+    name: "Workspace E2E setup i18n boundary", diagnostic: "Workspace E2E setup runs before i18n:compile",
+    module: "apps/deskohub-workspace/e2e/integrations/dotypos.ts",
+    cases: [
+      ["rejects the Workspace i18n barrel", 'import { baseLocale } from "@/features/i18n";\nexport { baseLocale };\n', true],
+      ["rejects the administration i18n barrel", 'import { m } from "@/features/administration/i18n";\nexport { m };\n', true],
+      ["rejects generated Paraglide output", 'import { locales } from "@/features/i18n/paraglide/runtime.js";\nexport { locales };\n', true],
+      ["rejects the i18n barrel in the capacity script", 'import { m } from "@/features/i18n";\nexport { m };\n', true, "apps/deskohub-workspace/scripts/workspace-e2e-capacity.ts"],
+      ["rejects the i18n barrel in the stale cleanup script", 'import { m } from "@/features/i18n";\nexport { m };\n', true, "apps/deskohub-workspace/scripts/workspace-e2e-stale-cleanup.ts"],
+      ["permits the locale registry", 'import { baseLocale } from "@deskohub/i18n/locale-registry";\nexport { baseLocale };\n', false],
+      ["permits a message-free i18n module", 'import { defaultPhoneRegion } from "@/features/i18n/phone-region";\nexport { defaultPhoneRegion };\n', false],
+      ["permits the i18n barrel in Playwright cases", 'import { m } from "@/features/i18n";\nexport { m };\n', false, "apps/deskohub-workspace/e2e/cases/locale.ts"],
+    ],
+  },
+  {
     name: "account Better Auth import boundary", diagnostic: "Import Better Auth only inside the account auth boundary",
     module: `${accountBackend}/customer-profile.service.ts`,
     cases: [

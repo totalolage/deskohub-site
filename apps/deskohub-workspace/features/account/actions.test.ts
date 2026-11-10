@@ -669,6 +669,38 @@ describe("account actions", () => {
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
+  describe("phone in the action's locale", () => {
+    const germanMobile = { firstName: "Ada", phone: "0151 23456789" };
+
+    test.each(["completeCustomerProfile", "updateCustomerProfile"] as const)(
+      "%s saves a phone without a country calling code in the locale's region",
+      async (actionName) => {
+        const actions = await importActions();
+        request.setReferer("https://deskohub.test/de-DE/account");
+
+        const result = await actions[actionName](germanMobile);
+
+        expect(result.data).toBeTruthy();
+        expect(profileCalls.map(({ args }) => args[1])).toEqual([
+          { firstName: "Ada", phone: "+4915123456789" },
+        ]);
+      }
+    );
+
+    test.each(["completeCustomerProfile", "updateCustomerProfile"] as const)(
+      "%s rejects that phone from a Czech page",
+      async (actionName) => {
+        const actions = await importActions();
+        request.setReferer("https://deskohub.test/cs-CZ/account");
+
+        const result = await actions[actionName](germanMobile);
+
+        expect(result.validationErrors).toBeTruthy();
+        expect(profileCalls).toHaveLength(0);
+      }
+    );
+  });
+
   test("rejects an email in the profile input and never forwards profile fields containing one", async () => {
     const { updateCustomerProfile } = await importActions();
 

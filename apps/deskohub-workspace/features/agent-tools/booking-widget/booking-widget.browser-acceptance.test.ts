@@ -9,6 +9,7 @@ import {
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import type { CallToolResult } from "@modelcontextprotocol/client";
 import type {
   McpUiStyles,
@@ -286,7 +287,7 @@ const checkAvailability = async (
 };
 
 describe.skipIf(!chromiumAvailable)("booking view", () => {
-  for (const locale of ["en-US", "cs-CZ"] as const) {
+  for (const locale of supportedLocales) {
     test(`reserve mode in ${locale}: quotes, starts the booking, and opens the Pay page`, async () => {
       const { page, view, calls, linkOpened } = await openBookingView({
         mode: "reserve",
@@ -648,7 +649,7 @@ describe.skipIf(!chromiumAvailable)("booking view", () => {
     }
   });
 
-  for (const locale of ["en-US", "cs-CZ"] as const) {
+  for (const locale of supportedLocales) {
     test(`meeting room in ${locale}: offers early setup only while the setup time is free and keeps the choice for another free start`, async () => {
       const { page, view, calls, linkOpened } = await openBookingView({
         mode: "reserve",

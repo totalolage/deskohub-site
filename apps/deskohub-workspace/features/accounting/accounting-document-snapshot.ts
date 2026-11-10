@@ -4,6 +4,7 @@ import {
   type DotyposReservationId,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
+import { supportedLocales } from "@deskohub/i18n/locale-registry";
 import { Match, Schema } from "effect";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-quote-cowork";
@@ -98,7 +99,7 @@ export const accountingDocumentIdentitySchema = Schema.Struct({
   workspaceReservationId: workspaceReservationIdSchema,
   dotyposReservationId: DotyposReservationIdSchema,
   dotyposCustomerId: DotyposCustomerIdSchema,
-  locale: Schema.Literals(["cs-CZ", "en-US"]),
+  locale: Schema.Literals(supportedLocales),
   supplier: accountingSupplierSchema,
   buyer: accountingBuyerSchema,
 });

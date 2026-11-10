@@ -4,7 +4,7 @@ import type { TextInputInstance } from "react-native";
 import { theme } from "../theme";
 import { Button, TextField } from "./controls";
 import { idleLiveRegionLayout } from "./notice-presentation";
-import { elementTree, find, findAll } from "./testing/element-tree";
+import { elementTree, find, findAll, hostTree } from "./testing/element-tree";
 
 const button = (accessibilityLabel?: string) =>
   Button({ label: "label", onPress: () => undefined, accessibilityLabel });
@@ -21,7 +21,7 @@ describe("Button", () => {
 
 /** The input and the error live region (its only Text with a role). */
 const field = (props: Partial<ComponentProps<typeof TextField>> = {}) => {
-  const tree = elementTree(TextField, { label: "label", ...props });
+  const tree = hostTree(elementTree(TextField, { label: "label", ...props }));
   return {
     input: find(tree, "TextInput")?.props,
     errorRegion: findAll(tree, "Text").find(

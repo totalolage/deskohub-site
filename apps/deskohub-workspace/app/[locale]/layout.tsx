@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { loadGlobalRelease } from "@/features/feature-flags/backend/global-release.server";
 import { isLocale, locales, m } from "@/features/i18n";
+import { getLocaleBrandFontStack } from "@/features/i18n/locale-fonts";
 import { RouteLocaleProvider } from "@/features/i18n/route-locale";
 import {
   getPublicPageTitle,
@@ -17,10 +18,12 @@ import "../globals.css";
 // Only the regular face is preloaded: few pages render italic text, and the
 // browser fetches the italic face when one does. Next names a font's family
 // after its const, so the italic face joins the regular face's `sculpin`
-// family and italic text still finds it.
+// family and italic text still finds it. Both files are variable fonts, so
+// declaring their whole weight axis gives medium, semibold and bold text the
+// designed instances instead of a synthesized bold.
 const sculpin = localFont({
   src: "../../assets/fonts/Sculpin/regular.woff2",
-  weight: "400",
+  weight: "300 900",
   style: "normal",
   display: "swap",
   variable: "--font-sculpin",
@@ -29,7 +32,7 @@ const sculpin = localFont({
 // Nothing reads its variable; applying it keeps the italic face in the CSS.
 const sculpinItalic = localFont({
   src: "../../assets/fonts/Sculpin/italic.woff2",
-  weight: "400",
+  weight: "300 900",
   style: "italic",
   display: "swap",
   preload: false,
@@ -99,11 +102,22 @@ export default async function LocaleLayout({
 }: LocaleLayoutProps) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
+  // A script Sculpin lacks, such as Ukrainian Cyrillic, takes its letters
+  // from a companion face listed after Sculpin.
+  const brandFontStack = getLocaleBrandFontStack(
+    locale,
+    sculpin.style.fontFamily
+  );
 
   return (
     <html
       lang={locale}
       className={`${sculpin.variable} ${sculpinItalic.variable}`}
+      style={
+        brandFontStack
+          ? ({ "--font-sculpin": brandFontStack } as CSSProperties)
+          : undefined
+      }
     >
       <head>
         <TemporalLoader />

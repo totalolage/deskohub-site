@@ -205,21 +205,25 @@ export class CustomerAccountSections extends Context.Service<
   );
 
   /**
+   * The sections reading the session through the `CustomerAuthentication`
+   * the caller provides later, such as a customer API request's.
+   */
+  static ForProvidedAuthentication = this.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        CustomerAccountLinkRepository.Live,
+        WorkspaceDatabaseAdvisoryLock.Default
+      )
+    )
+  );
+
+  /**
    * The sections reading the session through this authentication, such as
    * an agent's access token instead of the browser session.
    */
   static withAuthentication = <E, R>(
     authentication: Layer.Layer<CustomerAuthentication, E, R>
-  ) =>
-    this.Default.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          authentication,
-          CustomerAccountLinkRepository.Live,
-          WorkspaceDatabaseAdvisoryLock.Default
-        )
-      )
-    );
+  ) => this.ForProvidedAuthentication.pipe(Layer.provide(authentication));
 
   static Live = this.withAuthentication(CustomerAuthentication.Default);
 }
