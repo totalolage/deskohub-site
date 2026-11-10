@@ -470,7 +470,7 @@ describe("LatePaymentRecoveryService.recover original hold reuse", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "span createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation input received {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
@@ -752,7 +752,7 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "span createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation input received {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
@@ -847,7 +847,7 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "span createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation input received {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
@@ -957,7 +957,7 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "span createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation input received {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
@@ -1041,7 +1041,7 @@ describe("LatePaymentRecoveryService.recover original hold release", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "span createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation input received {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
@@ -1100,10 +1100,10 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
       [
         [
           {
+            "coffee": true,
             "date": "2099-01-01",
             "entryTier": "basic",
             "kind": "cowork",
-            "monitorOption": undefined,
           },
         ],
       ]
@@ -1150,7 +1150,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "span createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation input received {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
@@ -1191,9 +1191,15 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
       [
         [
           {
+            "duration": {
+              "amount": 4,
+              "unit": "hour",
+            },
+            "earlySetup": true,
             "endsAt": "2099-02-03T12:00:00Z",
             "kind": "meeting-room",
-            "startsAt": "2099-02-03T07:45:00Z",
+            "reservationDate": "2099-02-03",
+            "startsAt": "2099-02-03T08:00:00Z",
           },
         ],
       ]
@@ -1238,10 +1244,10 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
       [
         [
           {
-            "endsAt": "2099-06-21T22:00:00Z",
+            "endsOn": "2099-06-21",
             "kind": "office",
             "seats": 3,
-            "startsAt": "2099-06-19T22:00:00Z",
+            "startsOn": "2099-06-20",
           },
         ],
       ]
@@ -1577,7 +1583,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "call recoveries.requireRefund(paymentAttemptId=attempt-id, workspaceReservationId=reservation-id, failureCode=late_payment_reservation_unavailable, completedAt=<Instant>)",
       ]
     `);
@@ -1614,7 +1620,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "span createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation input received {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
@@ -1649,7 +1655,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "span createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation input received {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
@@ -1697,7 +1703,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "span createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation input received {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
@@ -1748,7 +1754,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "span createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation input received {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",
@@ -1796,7 +1802,7 @@ describe("LatePaymentRecoveryService.recover reservation recreation", () => {
         "call snapshots.findByPaymentAttemptId(attempt-id)",
         "span normalizeReservationIntervalFields",
         "call dotypos.listActiveReservationsOverlapping(startDate=<Date>, endDate=<Date>)",
-        "call availability.ensureAvailable(kind=cowork, date=2099-01-01, entryTier=basic, monitorOption=undefined)",
+        "call availability.ensureAvailable(kind=cowork, entryTier=basic, coffee=true, date=2099-01-01)",
         "span createWorkspaceDotyposReservation",
         "Info Workspace Dotypos reservation creation input received {date,entryTier,locale,paymentOrderId,reservationKind,reservationStatus} in createWorkspaceDotyposReservation",
         "span normalizeReservationIntervalFields",

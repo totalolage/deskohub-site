@@ -1,5 +1,5 @@
+export { AdvertisedPriceMismatchError } from "./advertised-price-mismatch";
 export {
-  AdvertisedPriceMismatchError,
   buildAdvertisedPriceState,
   openSubmittedAdvertisedPriceState,
   sealAdvertisedPriceState,
@@ -14,7 +14,11 @@ export {
   issueFreshPayState,
   PayStateIssueError,
 } from "./checkout-pay-url";
-export { CheckoutPricingService } from "./checkout-pricing.service";
+export {
+  type AdvertisementAffirmation,
+  CheckoutPricingService,
+  type PreparedCustomerQuote,
+} from "./checkout-pricing.service";
 export { CheckoutReferralService } from "./checkout-referral.service";
 export {
   type CheckoutCoworkStatusSummary,
@@ -52,3 +56,4 @@ export {
 export { acceptPayStatePriceChange } from "./pay-state-price-acceptance";
 export { PayableReservationService } from "./payable-reservation.service";
 export { getPaymentReturnDestination } from "./payment-return-destination";
+export type { PriceVerdict } from "./price-verdict";

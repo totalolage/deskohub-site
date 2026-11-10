@@ -21,10 +21,12 @@ import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { moneyEquals } from "@/shared/money/money";
 import { currentInstant } from "@/shared/utils";
+import { AdvertisedPriceMismatchError } from "./advertised-price-mismatch";
 import {
   getSubmittedCodeMetadata,
   type PayStateSubmittedCodeMetadata,
 } from "./pay-state-contract";
+import type { PriceVerdict } from "./price-verdict";
 
 const getReferralCode = (input: {
   readonly referralCode?: CanonicalPromotionCode;
@@ -53,15 +55,33 @@ export type ReservationAdvertisementQuoteInput<
   readonly submittedCode?: CanonicalPromotionCode;
 };
 
-export type ReservationAdvertisementAffirmationInput<
-  Reservation extends AdvertisedReservation<ReservationDetails>,
+/** An opened advertisement snapshot of one reservation family. */
+type ReservationAdvertisedPriceSnapshot<
+  Advertisement extends AdvertisedReservation<ReservationDetails>,
   Quote extends ReservationQuote,
-> = ReservationAdvertisementQuoteInput<Reservation> &
-  PayStateSubmittedCodeMetadata & {
-    readonly advertisedQuote: Quote;
-    /** Moment the reservation is submitted and its price is locked. */
-    readonly bookedAt: Temporal.Instant;
-  };
+> = PayStateSubmittedCodeMetadata & {
+  readonly locale: Locale;
+  readonly reservation: Advertisement;
+  readonly quote: Quote;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
+};
+
+export type ReservationAdvertisementAffirmationInput<
+  Advertisement extends AdvertisedReservation<ReservationDetails>,
+  CustomerReservation extends ReservationDetails,
+  Quote extends ReservationQuote,
+> = {
+  /** The snapshot the reservation page advertised. */
+  readonly advertisement: ReservationAdvertisedPriceSnapshot<
+    Advertisement,
+    Quote
+  >;
+  /** The submitted reservation the snapshot must advertise. */
+  readonly reservation: CustomerReservation;
+  readonly locale: Locale;
+  /** Moment the reservation is submitted and its price is locked. */
+  readonly bookedAt: Temporal.Instant;
+};
 
 export type ReservationCustomerQuoteInput<
   Reservation extends ReservationDetails,
@@ -119,11 +139,19 @@ export type ReservationAdvertisementQuote<
   readonly discountsComplete: boolean;
 };
 
+/**
+ * The advertised price affirmed for a submitted reservation: the snapshot's
+ * quote, and the discounts that still apply at the booking moment.
+ */
 export type ReservationAdvertisementAffirmation<
-  Reservation extends AdvertisedReservation<ReservationDetails>,
+  CustomerReservation extends ReservationDetails,
   Quote extends ReservationQuote,
-> = ReservationAdvertisedPrice<Reservation, Quote> & {
+> = PayStateSubmittedCodeMetadata & {
+  readonly kind: CustomerReservation["kind"];
+  readonly reservation: CustomerReservation;
+  readonly advertisedQuote: Quote;
   readonly discountQuote: AffirmedDiscountAdvertisementQuote;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
 };
 
 type ReservationCustomerQuote<
@@ -172,11 +200,18 @@ type PricingContext = {
 
 type ReservationPricingDomain<
   Details extends ReservationDetails,
+  Advertisement extends AdvertisedReservation<Details>,
+  CustomerReservation extends Details,
   Context extends PricingContext,
   Quote extends ReservationQuote,
   ContextError,
   QuoteError,
 > = {
+  /** The family's advertised price inputs and when two of them match. */
+  readonly advertised: {
+    readonly project: (reservation: CustomerReservation) => Advertisement;
+    readonly equals: (self: Advertisement, that: Advertisement) => boolean;
+  };
   readonly getPricingContext: (
     reservation: Details
   ) => Effect.Effect<Context, ContextError>;
@@ -204,10 +239,16 @@ interface ReservationCheckoutPricing<
     Error
   >;
   readonly affirmAdvertisement: (
-    input: ReservationAdvertisementAffirmationInput<Advertisement, Quote>
+    input: ReservationAdvertisementAffirmationInput<
+      Advertisement,
+      CustomerReservation,
+      Quote
+    >
   ) => Effect.Effect<
-    ReservationAdvertisementAffirmation<Advertisement, Quote>,
-    Error
+    PriceVerdict<
+      ReservationAdvertisementAffirmation<CustomerReservation, Quote>
+    >,
+    Error | AdvertisedPriceMismatchError
   >;
   readonly quoteForCustomer: (
     input: ReservationCustomerQuoteInput<CustomerReservation>
@@ -240,6 +281,8 @@ export const reservationCheckoutPricing = <
 >(
   domain: ReservationPricingDomain<
     Details,
+    Advertisement,
+    CustomerReservation,
     Context,
     Quote,
     ContextError,
@@ -356,50 +399,130 @@ export const reservationCheckoutPricing = <
       )
     );
 
+    /**
+     * Re-evaluates the advertised discounts at the booking moment: the
+     * anonymous ones the snapshot showed and its query code. A discount that
+     * became available after the snapshot is never added.
+     */
+    const reaffirmAdvertisedPrice = Effect.fn(
+      "ReservationCheckoutPricing.reaffirmAdvertisedPrice"
+    )(
+      (
+        input: Pick<
+          ReservationAdvertisementAffirmationInput<
+            Advertisement,
+            CustomerReservation,
+            Quote
+          >,
+          "advertisement" | "locale" | "bookedAt"
+        >
+      ) =>
+        domain.getPricingContext(input.advertisement.reservation.details).pipe(
+          Effect.bindTo("pricing"),
+          Effect.bind("discountQuote", ({ pricing }) =>
+            discounts.affirmAdvertisement({
+              ...pricing.discountInput,
+              bookedAt: input.bookedAt,
+              locale: input.locale,
+              advertisedDiscountIds: input.advertisement.quote.payment.discounts
+                .map(({ discount }) => discount.id)
+                .filter(
+                  (discountId) =>
+                    discountId !== input.advertisement.submittedCodeDiscountId
+                ),
+            })
+          ),
+          Effect.bind("preview", ({ discountQuote, pricing }) =>
+            previewSubmittedCode({
+              discountQuote,
+              firstServiceDate: pricing.discountInput.firstServiceDate,
+              locale: input.locale,
+              submittedCode: input.advertisement.submittedCode,
+              advertisedCodeDiscountId:
+                input.advertisement.submittedCodeDiscountId,
+            })
+          ),
+          Effect.bind("quote", ({ discountQuote, preview, pricing }) =>
+            domain.buildQuote({
+              pricing,
+              discountQuote: preview?.discountQuote ?? discountQuote,
+            })
+          ),
+          Effect.map(({ discountQuote, preview, quote }) => ({
+            discountQuote: preview
+              ? affirmedDiscountAdvertisementQuoteCodec.make(
+                  preview.discountQuote
+                )
+              : discountQuote,
+            quote,
+            ...getSubmittedCodeMetadata(preview ?? {}),
+          }))
+        )
+    );
+
+    /**
+     * Affirms the price a reservation page advertised for the submitted
+     * reservation. The snapshot must advertise this reservation in this
+     * locale. The price changed when the re-evaluated quote's fingerprint
+     * differs from the snapshot's.
+     */
     const affirmAdvertisement = Effect.fn(
       "ReservationCheckoutPricing.affirmAdvertisement"
-    )((input: ReservationAdvertisementAffirmationInput<Advertisement, Quote>) =>
-      domain.getPricingContext(input.reservation.details).pipe(
-        Effect.bindTo("pricing"),
-        Effect.bind("discountQuote", ({ pricing }) =>
-          discounts.affirmAdvertisement({
-            ...pricing.discountInput,
-            bookedAt: input.bookedAt,
-            locale: input.locale,
-            advertisedDiscountIds: input.advertisedQuote.payment.discounts
-              .map(({ discount }) => discount.id)
-              .filter(
-                (discountId) => discountId !== input.submittedCodeDiscountId
+    )(
+      (
+        input: ReservationAdvertisementAffirmationInput<
+          Advertisement,
+          CustomerReservation,
+          Quote
+        >
+      ) =>
+        Effect.succeed(input.advertisement).pipe(
+          Effect.filterOrFail(
+            (advertisement) =>
+              advertisement.locale === input.locale &&
+              domain.advertised.equals(
+                advertisement.reservation,
+                domain.advertised.project(input.reservation)
               ),
-          })
-        ),
-        Effect.bind("preview", ({ discountQuote, pricing }) =>
-          previewSubmittedCode({
-            discountQuote,
-            firstServiceDate: pricing.discountInput.firstServiceDate,
-            locale: input.locale,
-            submittedCode: input.submittedCode,
-            advertisedCodeDiscountId: input.submittedCodeDiscountId,
-          })
-        ),
-        Effect.bind("quote", ({ discountQuote, preview, pricing }) =>
-          domain.buildQuote({
-            pricing,
-            discountQuote: preview?.discountQuote ?? discountQuote,
-          })
-        ),
-        Effect.map(({ discountQuote, preview, quote }) => ({
-          kind: input.reservation.kind,
-          reservation: input.reservation,
-          discountQuote: preview
-            ? affirmedDiscountAdvertisementQuoteCodec.make(
-                preview.discountQuote
-              )
-            : discountQuote,
-          quote,
-          ...getSubmittedCodeMetadata(preview ?? {}),
-        }))
-      )
+            AdvertisedPriceMismatchError.inputMismatch
+          ),
+          Effect.flatMap(() => reaffirmAdvertisedPrice(input)),
+          Effect.map(
+            (
+              affirmed
+            ): PriceVerdict<
+              ReservationAdvertisementAffirmation<CustomerReservation, Quote>
+            > => {
+              const { advertisement } = input;
+              const priced = {
+                kind: input.reservation.kind,
+                reservation: input.reservation,
+                advertisedQuote: advertisement.quote,
+                discountQuote: affirmed.discountQuote,
+                ...getSubmittedCodeMetadata(affirmed),
+                requestedDiscountCode: advertisement.requestedDiscountCode,
+              };
+              if (
+                advertisement.quote.fingerprint === affirmed.quote.fingerprint
+              ) {
+                return { status: "affirmed", priced };
+              }
+              const summarize = (quote: Quote) =>
+                domain.getCheckoutSummary({
+                  reservation: advertisement.reservation.details,
+                  quote,
+                });
+              return {
+                status: "pricing_changed",
+                priced,
+                changedKeys: getCheckoutSummaryChangedKeys(
+                  summarize(advertisement.quote),
+                  summarize(affirmed.quote)
+                ),
+              };
+            }
+          )
+        )
     );
 
     const quoteForCustomer = Effect.fn(

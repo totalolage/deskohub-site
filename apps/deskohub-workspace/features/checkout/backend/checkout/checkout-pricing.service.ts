@@ -1,6 +1,12 @@
 import { Context, Effect, Layer, Match } from "effect";
 import { DiscountService } from "@/features/discounts/discount.service";
 import type { DiscountReleaseGates } from "@/features/discounts/discount-release-gate.service";
+import type { Locale } from "@/features/i18n";
+import {
+  type AdvertisedPriceMismatchError,
+  requireAdvertisedPriceStateKind,
+} from "./advertised-price-mismatch";
+import type { AdvertisedPriceState } from "./advertised-price-state";
 import {
   type CoworkAdvertisementAffirmation,
   type CoworkAdvertisementAffirmationInput,
@@ -43,6 +49,7 @@ import {
   type OfficePaymentPriceAffirmationInput,
   officeCheckoutPricing,
 } from "./office-checkout-pricing";
+import type { PriceVerdict } from "./price-verdict";
 
 type CheckoutPricingError =
   | CoworkCheckoutPricingError
@@ -89,27 +96,41 @@ type DiscountCodePriceResult =
   | MeetingRoomDiscountCodePriceResult
   | OfficeDiscountCodePriceResult;
 
+/**
+ * A submitted reservation with the advertisement snapshot its page issued.
+ * The snapshot may name any family; it must match the reservation's.
+ */
+type AdvertisementAffirmationInput = {
+  readonly advertisement: AdvertisedPriceState;
+  readonly reservation:
+    | CoworkAdvertisementAffirmationInput["reservation"]
+    | MeetingRoomAdvertisementAffirmationInput["reservation"]
+    | OfficeAdvertisementAffirmationInput["reservation"];
+  readonly locale: Locale;
+  /** Moment the reservation is submitted and its price is locked. */
+  readonly bookedAt: Temporal.Instant;
+};
+
+export type AdvertisementAffirmation =
+  | CoworkAdvertisementAffirmation
+  | MeetingRoomAdvertisementAffirmation
+  | OfficeAdvertisementAffirmation;
+
 export interface ICheckoutPricingService {
   readonly quoteAdvertisement: (
     input: AdvertisementQuoteInput
   ) => Effect.Effect<AdvertisementQuote, CheckoutPricingError>;
-  readonly affirmCoworkAdvertisement: (
-    input: CoworkAdvertisementAffirmationInput
+  /**
+   * Affirms the advertised price at reservation submission. The price
+   * changed when the discounts re-evaluated at the booking moment give a
+   * different quote than the snapshot's. A snapshot of another reservation,
+   * family, or locale fails; an unanswered discount provider fails too.
+   */
+  readonly affirmAdvertisement: (
+    input: AdvertisementAffirmationInput
   ) => Effect.Effect<
-    CoworkAdvertisementAffirmation,
-    CoworkCheckoutPricingError
-  >;
-  readonly affirmMeetingRoomAdvertisement: (
-    input: MeetingRoomAdvertisementAffirmationInput
-  ) => Effect.Effect<
-    MeetingRoomAdvertisementAffirmation,
-    MeetingRoomCheckoutPricingError
-  >;
-  readonly affirmOfficeAdvertisement: (
-    input: OfficeAdvertisementAffirmationInput
-  ) => Effect.Effect<
-    OfficeAdvertisementAffirmation,
-    OfficeCheckoutPricingError
+    PriceVerdict<AdvertisementAffirmation>,
+    AdvertisedPriceMismatchError | CheckoutPricingError
   >;
   readonly quoteForCustomer: (
     input: CustomerQuoteInput
@@ -149,6 +170,51 @@ export class CheckoutPricingService extends Context.Service<
             office.quoteAdvertisement(officeInput)
           ),
           Match.exhaustive
+        )
+      );
+
+      const affirmAdvertisement = Effect.fn(
+        "CheckoutPricingService.affirmAdvertisement"
+      )((input: AdvertisementAffirmationInput) =>
+        Match.value(input.reservation).pipe(
+          Match.discriminatorsExhaustive("kind")({
+            cowork: (reservation) =>
+              requireAdvertisedPriceStateKind(reservation.kind)(
+                input.advertisement
+              ).pipe(
+                Effect.flatMap((advertisement) =>
+                  cowork.affirmAdvertisement({
+                    ...input,
+                    advertisement,
+                    reservation,
+                  })
+                )
+              ),
+            "meeting-room": (reservation) =>
+              requireAdvertisedPriceStateKind(reservation.kind)(
+                input.advertisement
+              ).pipe(
+                Effect.flatMap((advertisement) =>
+                  meetingRoom.affirmAdvertisement({
+                    ...input,
+                    advertisement,
+                    reservation,
+                  })
+                )
+              ),
+            office: (reservation) =>
+              requireAdvertisedPriceStateKind(reservation.kind)(
+                input.advertisement
+              ).pipe(
+                Effect.flatMap((advertisement) =>
+                  office.affirmAdvertisement({
+                    ...input,
+                    advertisement,
+                    reservation,
+                  })
+                )
+              ),
+          })
         )
       );
 
@@ -209,9 +275,7 @@ export class CheckoutPricingService extends Context.Service<
 
       return {
         quoteAdvertisement,
-        affirmCoworkAdvertisement: cowork.affirmAdvertisement,
-        affirmMeetingRoomAdvertisement: meetingRoom.affirmAdvertisement,
-        affirmOfficeAdvertisement: office.affirmAdvertisement,
+        affirmAdvertisement,
         quoteForCustomer,
         affirmForPayment,
         applyDiscountCode,

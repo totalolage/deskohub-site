@@ -26,15 +26,12 @@ import {
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
-import type { LegalEvidenceMap } from "@/features/checkout/legal-evidence";
 import type { PaymentReturnTarget } from "@/features/checkout/payment-return-target";
 import {
   isWorkspaceCoworkCurrentProductTier,
   type WorkspaceCoworkProductTier,
 } from "@/features/checkout/product-catalog";
-import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
-import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
-import { getOfficeCheckoutDetails } from "@/features/checkout/schemas/checkout-details-office";
+import { getCheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import type { DiscountCommitment } from "@/features/discounts";
 import { defaultPhoneRegion, type Locale } from "@/features/i18n";
 import { isEarlyPerformanceRequestRequired } from "@/features/legal/early-performance";
@@ -325,37 +322,6 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
 ).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError));
 
 const toNexiAmount = Schema.encodeEffect(NexiAmountFromWorkspaceMoney);
-
-const getCheckoutDetails = (
-  prepared: PaymentPriceAffirmation,
-  locale: Locale,
-  legalEvidence: LegalEvidenceMap
-) =>
-  Match.value(prepared).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      cowork: ({ quote, reservation }) =>
-        getCoworkCheckoutDetails({
-          locale,
-          reservation,
-          quote,
-          legalEvidence,
-        }),
-      "meeting-room": ({ quote, reservation }) =>
-        getMeetingRoomCheckoutDetails({
-          locale,
-          reservation,
-          quote,
-          legalEvidence,
-        }),
-      office: ({ quote, reservation }) =>
-        getOfficeCheckoutDetails({
-          locale,
-          reservation,
-          quote,
-          legalEvidence,
-        }),
-    })
-  );
 
 const openFinalPayState: (
   payStateToken: string,
@@ -1188,11 +1154,11 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                     acceptedAt: contractAt.toString(),
                     earlyPerformanceConsent: earlyPerformanceRequired,
                   });
-                  const checkoutDetails = getCheckoutDetails(
-                    prepared,
+                  const checkoutDetails = getCheckoutDetails({
                     locale,
-                    legalEvidence
-                  );
+                    priced: prepared,
+                    legalEvidence,
+                  });
                   yield* Effect.annotateLogsScoped({
                     acceptedDocumentCount: Object.keys(legalEvidence).length,
                     earlyPerformanceRequested: earlyPerformanceRequired,
@@ -1306,11 +1272,11 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                           acceptedSummary,
                           refreshedSummary
                         );
-                        const refreshedCheckoutDetails = getCheckoutDetails(
-                          refreshed,
+                        const refreshedCheckoutDetails = getCheckoutDetails({
                           locale,
-                          legalEvidence
-                        );
+                          priced: refreshed,
+                          legalEvidence,
+                        });
                         yield* dotypos.updateReservation({
                           reservationId: dotyposReservationId,
                           note: formatWorkspaceReservationNote({

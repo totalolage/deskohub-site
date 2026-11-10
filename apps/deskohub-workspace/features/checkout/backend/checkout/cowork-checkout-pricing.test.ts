@@ -205,10 +205,14 @@ describe("cowork checkout pricing", () => {
       Effect.gen(function* () {
         const pricing = yield* coworkCheckoutPricing;
         return yield* pricing.affirmAdvertisement({
-          reservation: advertisedReservation,
+          advertisement: {
+            locale: "en-US",
+            reservation: advertisedReservation,
+            quote: displayedQuote,
+          },
+          reservation,
           locale: "en-US",
           bookedAt,
-          advertisedQuote: displayedQuote,
         });
       }),
       DiscountServiceMock({ affirmAdvertisement })
@@ -223,8 +227,8 @@ describe("cowork checkout pricing", () => {
       bookedAt,
       advertisedDiscountIds: [advertisedDiscountId],
     });
-    expect(result.discountQuote).toBe(affirmedAdvertisement);
-    expect(result.quote.payment.expectedPrice).toEqual(money(22_500));
+    expect(result.status).toBe("affirmed");
+    expect(result.priced.discountQuote).toBe(affirmedAdvertisement);
   });
 
   describe("affirming an advertised query code", () => {
@@ -263,12 +267,16 @@ describe("cowork checkout pricing", () => {
           const pricing = yield* coworkCheckoutPricing;
           return yield* pricing
             .affirmAdvertisement({
-              reservation: advertisedReservation,
+              advertisement: {
+                locale: "en-US",
+                reservation: advertisedReservation,
+                quote: advertisedQuote,
+                submittedCode,
+                submittedCodeDiscountId: codeDiscountId,
+              },
+              reservation,
               locale: "en-US",
               bookedAt,
-              advertisedQuote,
-              submittedCode,
-              submittedCodeDiscountId: codeDiscountId,
             })
             .pipe(Effect.result);
         }),
@@ -304,7 +312,7 @@ describe("cowork checkout pricing", () => {
     });
 
     test("drops a code that is no longer available", async () => {
-      const { advertisedQuote, result } = await affirmWithFailedCodePreview(
+      const { result } = await affirmWithFailedCodePreview(
         new PromotionCodeUnavailableError({
           reason: "usage_limit_reached",
           message: "The code has no uses left.",
@@ -313,11 +321,11 @@ describe("cowork checkout pricing", () => {
 
       expect(result._tag).toBe("Success");
       if (result._tag !== "Success") return;
-      expect(result.success.submittedCodeDiscountId).toBeUndefined();
-      expect(result.success.quote.fingerprint).not.toBe(
-        advertisedQuote.fingerprint
+      expect(result.success.status).toBe("pricing_changed");
+      expect(result.success.priced.submittedCodeDiscountId).toBeUndefined();
+      expect(result.success.priced.discountQuote.discounts).toEqual(
+        affirmedAdvertisement.discounts
       );
-      expect(result.success.quote.payment.expectedPrice).toEqual(money(22_500));
     });
 
     test("omits a code from discovery when its provider is unavailable", async () => {
