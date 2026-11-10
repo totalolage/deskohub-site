@@ -29,7 +29,8 @@ import {
 const installBarSpaceProperty = "--install-bar-space";
 
 /** Keeps `--install-bar-space` on the document at the bar's height. */
-const reserveInstallBarSpace = (element: HTMLElement) => {
+const reserveInstallBarSpace = (element: HTMLElement | null) => {
+  if (!element) return;
   const { style } = document.documentElement;
   const observer = new ResizeObserver(() =>
     style.setProperty(installBarSpaceProperty, `${element.offsetHeight}px`)
