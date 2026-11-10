@@ -27,7 +27,12 @@ export const getAndroidReleaseFacts = (
   version: release.versionName,
   size: formatFileSize(release.apkSizeBytes, locale),
   date: formatInstantDate({
-    instant: Temporal.Instant.from(release.publishedAt),
+    // Not `Temporal.Instant.from`: the Temporal polyfill Node.js runs on
+    // constructs `new Date()` while parsing a string, which fails the
+    // prerender of `/android` as a read of the current time.
+    instant: Temporal.Instant.fromEpochMilliseconds(
+      Date.parse(release.publishedAt)
+    ),
     locale,
     dateStyle: "long",
     timeZone: workspaceSiteConstants.location.timeZone,
