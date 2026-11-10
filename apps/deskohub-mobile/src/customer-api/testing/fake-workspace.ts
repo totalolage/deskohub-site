@@ -27,6 +27,7 @@ import {
   CustomerSessionRequired,
   customerApiClientHeader,
   type ProfileCompletionReferralOutcome,
+  type SyncCustomerAnalyticsConsent,
   WorkspaceCustomerApi,
 } from "@deskohub/workspace-customer-api";
 import { Clock, Effect, Layer, Schema, Stream } from "effect";
@@ -106,6 +107,15 @@ export class FakeWorkspace {
   deletionOutcome: CustomerAccountDeletionResult["status"] = "deleted";
   /** Endpoint names in the order requests reached them. */
   readonly calls: EndpointName[] = [];
+  /**
+   * The account's current analytics decision, if it made one; `notice` says
+   * whether a grant was given under the current privacy notice.
+   */
+  analyticsDecision: FakeAnalyticsDecision | undefined;
+  /** What each analytics consent sync sent, in order. */
+  readonly analyticsSyncs: SyncCustomerAnalyticsConsent[] = [];
+  /** Runs while a sync is handled, before it answers. */
+  onAnalyticsSync: (() => void) | undefined;
   private readonly outcomes = new Map<EndpointName, FakeRequestOutcome[]>();
 
   constructor(data: FakeWorkspaceData = sampleWorkspaceData("linked")) {
@@ -168,6 +178,45 @@ export class FakeWorkspace {
     return this.avatarRejections.shift();
   }
 }
+
+/** The account's analytics decision as the fake Workspace keeps it. */
+export interface FakeAnalyticsDecision {
+  readonly granted: boolean;
+  readonly decidedAt: string;
+  readonly notice: "current" | "earlier";
+}
+
+/**
+ * The Workspace's sync rules in brief: a device choice newer than the
+ * account's decision becomes it; the answer is the account's withdrawal over
+ * an accepting choice it didn't take, or its current-notice grant for a
+ * device without a choice.
+ */
+const syncAnalyticsConsent = (
+  workspace: FakeWorkspace,
+  { choice }: SyncCustomerAnalyticsConsent
+) => {
+  const current = workspace.analyticsDecision;
+  if (choice === null) {
+    return current?.granted && current.notice === "current"
+      ? { kind: "grant" as const, decidedAt: current.decidedAt }
+      : { kind: "unchanged" as const };
+  }
+  const mirrored =
+    current === undefined ||
+    Date.parse(choice.decidedAt) > Date.parse(current.decidedAt);
+  if (mirrored) {
+    workspace.analyticsDecision = {
+      granted: choice.analytics,
+      decidedAt: new Date(Date.parse(choice.decidedAt)).toISOString(),
+      notice: "current",
+    };
+    return { kind: "unchanged" as const };
+  }
+  return choice.analytics && !current.granted
+    ? { kind: "withdraw" as const, decidedAt: current.decidedAt }
+    : { kind: "unchanged" as const };
+};
 
 /** One part of an avatar upload body, as the fake Workspace read it. */
 export type FakeAvatarUploadPart =
@@ -453,19 +502,29 @@ const serverLayer = (workspace: FakeWorkspace) => {
                 )
           )
         )
-        // The app doesn't call the analytics consent endpoints yet: the
-        // account never decided, and a save answers the current instant.
-        .handle("syncAnalyticsConsent", () =>
-          Effect.succeed({ kind: "unchanged" as const })
+        .handle("syncAnalyticsConsent", ({ payload }) =>
+          Effect.sync(() => {
+            workspace.analyticsSyncs.push(payload);
+            workspace.onAnalyticsSync?.();
+            return syncAnalyticsConsent(workspace, payload);
+          })
         )
         .handle("getAnalyticsPreference", () =>
-          Effect.succeed({ granted: false })
-        )
-        .handle("saveAnalyticsPreference", ({ payload: { granted } }) =>
-          Effect.map(Clock.currentTimeMillis, (now) => ({
-            granted,
-            decidedAt: new Date(now).toISOString(),
+          Effect.sync(() => ({
+            granted: workspace.analyticsDecision?.granted ?? false,
           }))
+        )
+        // The decision is made now, answered to the millisecond.
+        .handle("saveAnalyticsPreference", ({ payload: { granted } }) =>
+          Effect.map(Clock.currentTimeMillis, (now) => {
+            const decidedAt = new Date(now).toISOString();
+            workspace.analyticsDecision = {
+              granted,
+              decidedAt,
+              notice: "current",
+            };
+            return { granted, decidedAt };
+          })
         )
         .handle("getReferrals", () =>
           Effect.flatMap(linkedAccount, (current) =>
