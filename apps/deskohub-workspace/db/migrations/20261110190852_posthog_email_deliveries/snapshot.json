@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "e95dac81-8470-4583-a7e0-ebbf95e8519a",
+  "id": "8016deb1-08ae-4537-925e-9abbdef0f8fd",
   "prevIds": [
-    "645631ac-dd1b-4c1c-a3f0-5988bfabf6d9"
+    "d6ad6903-571f-4b4f-85d2-3bc00016be1e"
   ],
   "ddl": [
     {
@@ -16765,7 +16765,7 @@
       "table": "account_analytics_consent_decisions"
     },
     {
-      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK')",
+      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK', 'vi-VN', 'hi-IN')",
       "name": "account_analytics_consent_decisions_locale_check",
       "entityType": "checks",
       "schema": "public",
@@ -17066,7 +17066,7 @@
       "table": "customer_marketing_consents"
     },
     {
-      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK')",
+      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK', 'vi-VN', 'hi-IN')",
       "name": "customer_marketing_consents_locale_check",
       "entityType": "checks",
       "schema": "public",
@@ -17444,7 +17444,7 @@
       "table": "email_campaign_delivery_batches"
     },
     {
-      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK')",
+      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK', 'vi-VN', 'hi-IN')",
       "name": "email_campaign_recipients_locale_check",
       "entityType": "checks",
       "schema": "public",
@@ -18228,7 +18228,7 @@
       "table": "workspace_reservations"
     },
     {
-      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK')",
+      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK', 'vi-VN', 'hi-IN')",
       "name": "workspace_reservations_locale_check",
       "entityType": "checks",
       "schema": "public",
@@ -18298,7 +18298,7 @@
       "table": "workspace_reservations"
     },
     {
-      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK')",
+      "value": "\"locale\" in ('en-US', 'cs-CZ', 'de-DE', 'uk-UA', 'sk-SK', 'vi-VN', 'hi-IN')",
       "name": "user_locale_check",
       "entityType": "checks",
       "schema": "auth",
