@@ -51,7 +51,11 @@ Any other read goes through `evaluateRequestFlags` (`backend/request-flag-evalua
 
 The global subject's result is the same for every anonymous visitor while no flag targets persons or groups, so each isolate keeps it in an Effect `Cache` keyed by subject id and sorted flag set: 60 seconds for a complete evaluation, 15 seconds for a failed one or one PostHog left incomplete (the Node SDK turns failed, timed-out, or quota-limited evaluations into missing flags, not errors). Identified visitors never use it. When a flag gains person or group targeting, drop this cache.
 
-`readRemoteEvaluationPolicy` (`backend/remote-evaluation-policy.server.ts`) decides whether a deployment may evaluate remotely at all; it answers `allowed` everywhere today. Under `disabled`, nothing calls PostHog: every flag that would have gone remote reads as `false`, so its gate stays closed, and each such flag is logged once per isolate with code `feature_flags.remote_evaluation_disabled`.
+### Remote evaluation only in production
+
+Previews, E2E runs, local development and tests share production's PostHog project and its flag-request quota, so only the production deployment evaluates flags remotely. `readRemoteEvaluationPolicy` (`backend/remote-evaluation-policy.server.ts`) maps the validated `env.VERCEL_ENV` through `byStage` (`shared/deployment/deployment-stage.ts`): `production` is `allowed`; `preview`, `development` and a missing stage are `disabled`. Vercel sets `VERCEL_ENV` at build and runtime, and the env schema rejects a missing or unknown value, so production can't be classified as anything else. The test bootstrap defaults it to `development`, so tests never call PostHog. Don't add a second notion of environment or a switch that re-enables remote evaluation outside production.
+
+Under `disabled`, nothing on the server calls PostHog's `/flags`: every flag that would have gone remote reads as `false`, so its gate stays closed, and each such flag is logged once per isolate with code `feature_flags.remote_evaluation_disabled`. Outside production a flag is therefore on only when its classification (live, last-known or snapshot) makes it constant on, or when `POSTHOG_FEATURE_FLAG_OVERRIDES` turns it on. Classification still lists definitions through the management REST API there; that isn't billed as a flag request. A missing override never fails a build. When an E2E case or a local workflow needs a flag that isn't constant on, give it an override (below), never remote evaluation.
 
 Public pages use this one adaptive path. Cache request-independent provider reads, such as calendar or media data, at their own boundaries. Don't build a parallel global page or separate global and request service layers; when a flag becomes targeted, the same service reads the request subject and Next.js makes the route dynamic.
 
@@ -78,6 +82,10 @@ Keep these schemas and their tests in the feature-flag module; `env.schema.ts` c
 - applies once to the process-scoped Node client and also overrides constant classification;
 - passes unchanged from the server layout to the consent-aware browser boundary, which replaces the complete override set after analytics initializes and clears persisted overrides when the map is absent;
 - never comes from a request, cookie, header, URL, or visitor identity.
+
+### Turn a flag on for one PR
+
+Add a Vercel Preview `POSTHOG_FEATURE_FLAG_OVERRIDES` value scoped to the PR's Git branch on the Workspace project, holding the complete map the branch needs (the shared Preview keys plus the PR's flag), and redeploy the branch. A branch-scoped value replaces the shared Preview value for that branch only. Never edit the shared Preview value for one PR: it serves every preview and E2E run. For local development, set the variable in the app's local env file.
 
 Don't initialize analytics before consent just to apply an override. Type browser override clients against `PostHogFeatureFlagOverrides<Definitions>` instead of casting to a record.
 
