@@ -33,6 +33,7 @@ import {
   resolveCustomerAccountLink,
 } from "./customer-account-resolver.service";
 import { CustomerAuthentication } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 const uniqueId = () => crypto.randomUUID();
@@ -143,6 +144,7 @@ const signIn = (input: {
           accountId: input.accountId,
           email: testEmailAddress(input.accountId),
           deletionRequested: false,
+          ...testSessionProfile,
         }),
       findLink: links.find,
       isReviewAccount: () => Effect.succeed(false),

@@ -5,15 +5,22 @@ import type {
 } from "@deskohub/igloohome";
 import { AlgoPinSchema } from "@deskohub/igloohome";
 import { NodeCrypto } from "@effect/platform-node";
-import { and, eq, inArray, lte, or } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, or } from "drizzle-orm";
 import { Context, Crypto, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { equalsAny } from "@/db/equals-any";
 import { reservationAccessGrants } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import {
+  type ReadLimitExceededError,
+  readLimitSentinel,
+  requireWithinReadLimit,
+} from "@/shared/backend/read-limit";
 import {
   makeReservationAccessName,
   type ReservationAccessGrant,
   type ReservationAccessGrantId,
+  type ReservationAccessGrantState,
   reservationAccessGrantIdSchema,
 } from "../reservation-access";
 
@@ -69,6 +76,20 @@ const hasBounds = (bounds: ReservationAccessBounds) =>
     eq(reservationAccessGrants.accessEndsAt, bounds.accessEndsAt)
   );
 
+/**
+ * A reservation's door-access grant state and access window. The access
+ * code, the provider credential id, the device id, the access name and the
+ * failure code are not part of it.
+ */
+export interface ReservationAccessGrantStatus {
+  readonly workspaceReservationId: WorkspaceReservationId;
+  readonly state: ReservationAccessGrantState;
+  readonly scheduledAccessStartsAt: Temporal.Instant;
+  readonly accessStartsAt: Temporal.Instant;
+  readonly accessEndsAt: Temporal.Instant;
+  readonly issuedAt: Temporal.Instant | null;
+}
+
 export interface IReservationAccessRepository {
   /**
    * Creates the grant, or resets a retryable one, for a target. An issued
@@ -90,6 +111,20 @@ export interface IReservationAccessRepository {
   ) => Effect.Effect<
     ReservationAccessGrant | null,
     ReservationAccessStorageError
+  >;
+  /**
+   * The grant status of each listed reservation that has a grant, oldest
+   * grant first. Callers pass reservation ids they already scoped to one
+   * customer; an empty list reads nothing. Fails with
+   * `ReadLimitExceededError`, returning no rows, when the reservations have
+   * more than `limit` grants together.
+   */
+  readonly listForReservations: (input: {
+    readonly workspaceReservationIds: readonly WorkspaceReservationId[];
+    readonly limit: number;
+  }) => Effect.Effect<
+    readonly ReservationAccessGrantStatus[],
+    ReservationAccessStorageError | ReadLimitExceededError
   >;
   readonly claim: (input: {
     readonly id: ReservationAccessGrantId;
@@ -181,8 +216,51 @@ export class ReservationAccessRepository extends Context.Service<
         return row ?? null;
       });
 
+      const listForReservations = Effect.fn(
+        "ReservationAccessRepository.listForReservations"
+      )(function* (input: {
+        readonly workspaceReservationIds: readonly WorkspaceReservationId[];
+        readonly limit: number;
+      }) {
+        if (input.workspaceReservationIds.length === 0) return [];
+        const rows: readonly ReservationAccessGrantStatus[] = yield* db
+          .select({
+            workspaceReservationId:
+              reservationAccessGrants.workspaceReservationId,
+            state: reservationAccessGrants.state,
+            scheduledAccessStartsAt:
+              reservationAccessGrants.scheduledAccessStartsAt,
+            accessStartsAt: reservationAccessGrants.accessStartsAt,
+            accessEndsAt: reservationAccessGrants.accessEndsAt,
+            issuedAt: reservationAccessGrants.issuedAt,
+          })
+          .from(reservationAccessGrants)
+          .where(
+            equalsAny(
+              reservationAccessGrants.workspaceReservationId,
+              input.workspaceReservationIds
+            )
+          )
+          .orderBy(
+            asc(reservationAccessGrants.createdAt),
+            asc(reservationAccessGrants.id)
+          )
+          .limit(readLimitSentinel(input.limit))
+          .pipe(
+            Effect.mapError(
+              () =>
+                new ReservationAccessStorageError({
+                  operation: "load",
+                  message: "Reservation access grants could not be loaded.",
+                })
+            )
+          );
+        return yield* requireWithinReadLimit(rows, input.limit);
+      });
+
       return ReservationAccessRepository.of({
         findByReservationId,
+        listForReservations,
         ensure: Effect.fn("ReservationAccessRepository.ensure")(
           function* (input) {
             const id = yield* crypto.randomUUIDv7.pipe(

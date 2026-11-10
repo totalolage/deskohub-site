@@ -299,12 +299,16 @@ describe("CustomerAgentAuthorization.currentUser", () => {
 
     expect(outcome._tag).toBe("Success");
     if (outcome._tag !== "Success") return;
-    expect(outcome.success).toEqual({
+    const { accountCreatedAt, accountUpdatedAt, ...session } = outcome.success!;
+    expect(session).toEqual({
       accountId: ACCOUNT_ID as CustomerAccountId,
       email: customerEmail as never,
       deletionRequested: false,
+      displayName: null,
       localePreference: "cs-CZ",
     });
+    expect(accountCreatedAt.toString()).toBe("2026-10-01T00:00:00Z");
+    expect(accountUpdatedAt.toString()).toBe("2026-10-01T00:00:00Z");
   });
 
   test.each([

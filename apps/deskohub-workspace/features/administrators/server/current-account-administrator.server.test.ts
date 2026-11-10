@@ -7,6 +7,7 @@ import {
   type CustomerAccountSession,
   CustomerAuthentication,
 } from "@/features/account/backend/customer-authentication.service";
+import { testSessionProfile } from "@/features/account/backend/customer-authentication.test-utils";
 import {
   CustomerAccountAccessError,
   customerAccountIdSchema,
@@ -21,6 +22,7 @@ const session: CustomerAccountSession = {
     testEmailAddress("current-account-administrator")
   ),
   deletionRequested: false,
+  ...testSessionProfile,
 };
 
 let currentUser: CustomerAuthentication["Service"]["currentUser"] =

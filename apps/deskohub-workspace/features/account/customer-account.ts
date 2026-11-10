@@ -97,6 +97,15 @@ export const mapCustomerAccountFailure =
 export const isCustomerProfileMissing = (error: CustomerAccountAccessError) =>
   error.reason === "link-required" && error.linkReason === "not-found";
 
+/**
+ * Whether the session is refused rather than unreadable. The `unavailable`
+ * reason means a session, link, lock, or Dotypos read failed, except for a
+ * review account, which never has a Dotypos customer.
+ */
+export const isCustomerAccountAccessDenial = (
+  error: CustomerAccountAccessError
+) => error.reason !== "unavailable" || error.cause?.code === "account.review";
+
 const supportLinkReasons: ReadonlySet<CustomerAccountLinkFailure> =
   new Set<CustomerAccountLinkFailure>(["ambiguous", "unusable", "claimed"]);
 

@@ -37,9 +37,13 @@ import {
   normalizeManualInvoiceInput,
 } from "@/features/accounting/manual-invoice";
 import type { AdministratorAccountActor } from "@/features/administrators/account-role";
-import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
+import {
+  type PaymentAttemptId,
+  paymentAttemptIdSchema,
+} from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
+import type { ReadLimitExceededError } from "@/shared/backend/read-limit";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import {
   AccountingDocumentSnapshotRepository,
@@ -75,6 +79,23 @@ export interface Invoice {
   readonly invoiceNumber: InvoiceNumber;
   readonly issuedAt: Temporal.Instant;
   readonly document: InvoiceDocument;
+}
+
+/**
+ * An issued invoice's numbering and source references, read without its
+ * document: no decryption, no encrypted bytes and no key id.
+ * `documentSnapshotRecordedAt` is when the accounting snapshot of a
+ * reservation invoice's payment attempt was recorded; a manual invoice has
+ * none.
+ */
+export interface InvoiceMetadata {
+  readonly invoiceNumber: InvoiceNumber;
+  readonly issuedAt: Temporal.Instant;
+  readonly numberingYear: number;
+  readonly numberingSequence: number;
+  readonly workspaceReservationId: WorkspaceReservationId | null;
+  readonly paymentAttemptId: PaymentAttemptId | null;
+  readonly documentSnapshotRecordedAt: Temporal.Instant | null;
 }
 
 interface InvoiceIssuance {
@@ -166,6 +187,19 @@ export interface IInvoiceRepository {
   ) => Effect.Effect<
     readonly Invoice[],
     EffectDrizzleQueryError | InvoiceStorageError
+  >;
+  /**
+   * The Dotypos customer's invoice metadata, oldest issue first, scoped by
+   * the invoice's own customer column. Decrypts nothing. Fails with
+   * `ReadLimitExceededError`, returning no rows, when the customer has more
+   * than `limit` invoices.
+   */
+  readonly listMetadataForCustomer: (input: {
+    readonly dotyposCustomerId: DotyposCustomerId;
+    readonly limit: number;
+  }) => Effect.Effect<
+    readonly InvoiceMetadata[],
+    EffectDrizzleQueryError | ReadLimitExceededError
   >;
   /** Decrypts every invoice. */
   readonly list: () => Effect.Effect<

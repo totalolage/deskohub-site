@@ -21,6 +21,7 @@ import {
   resolveCustomerAccountLink,
 } from "./customer-account-resolver.service";
 import { CustomerAuthentication } from "./customer-authentication.service";
+import { testSessionProfile } from "./customer-authentication.test-utils";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 import { CustomerProfileService } from "./customer-profile.service";
 import { CustomerReservationHistoryService } from "./customer-reservation-history.service";
@@ -56,7 +57,12 @@ describe("a review account's Dotypos link", () => {
     const calls: string[] = [];
     const dependencies: CustomerAccountResolutionDependencies = {
       currentUser: () =>
-        Effect.succeed({ accountId, email, deletionRequested: false }),
+        Effect.succeed({
+          accountId,
+          email,
+          deletionRequested: false,
+          ...testSessionProfile,
+        }),
       findLink: () => Effect.succeed(null),
       isReviewAccount: () => Effect.succeed(true),
       classify: () => {
