@@ -87,25 +87,20 @@ const noReferral: ProfileCompletionReferral = {
  * from the session. Every other standing fails the save with
  * `linkedAccountFailure`.
  */
-const saveCustomerProfile = (
+const saveCustomerProfile = Effect.fn(function* (
   input: CustomerProfileSave,
   referral: ProfileCompletionReferral
-) =>
-  Effect.gen(function* () {
-    const current = yield* CurrentCustomerAccount;
-    const standing = yield* current.resolve;
-    if (standing.kind === "linked") {
-      return yield* updateLinkedProfile(standing.account, input);
-    }
-    if (standing.kind === "profile-missing") {
-      return yield* completeNewCustomerProfile(
-        standing.session,
-        input,
-        referral
-      );
-    }
-    return yield* linkedAccountFailure(standing);
-  });
+) {
+  const current = yield* CurrentCustomerAccount;
+  const standing = yield* current.resolve;
+  if (standing.kind === "linked") {
+    return yield* updateLinkedProfile(standing.account, input);
+  }
+  if (standing.kind === "profile-missing") {
+    return yield* completeNewCustomerProfile(standing.session, input, referral);
+  }
+  return yield* linkedAccountFailure(standing);
+});
 
 const updateLinkedProfile = (
   account: LinkedCustomerAccount,
