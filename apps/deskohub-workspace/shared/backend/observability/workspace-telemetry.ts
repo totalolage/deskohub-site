@@ -1,10 +1,11 @@
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, References } from "effect";
 import { env } from "@/env";
 import {
   createWorkspaceOtelLoggerLive,
   WorkspaceLoggerLive,
 } from "../logging/censorship";
+import { workspaceMinimumLogLevel } from "./telemetry-policy";
 import {
   createIdentifiedTracingLive,
   createPostHogLoggerProvider,
@@ -47,7 +48,8 @@ type GlobalWithTelemetry = typeof globalThis & {
 /**
  * The process's PostHog logger provider, built from the Workspace's
  * configuration by whichever module instance asks first. Undefined without a
- * PostHog project token. Throws when PostHog is configured without its host
+ * PostHog project token, and outside production unless `POSTHOG_LOGS_EXPORT`
+ * opts the deployment in. Throws when export is on without the PostHog host
  * or environment; the runtime then can't build its observability.
  */
 export const workspaceLoggerProvider = () => {
@@ -55,6 +57,7 @@ export const workspaceLoggerProvider = () => {
   processGlobals[workspaceTelemetryHandle] ??= {
     loggerProvider: createPostHogLoggerProvider({
       deploymentEnvironment: env.VERCEL_ENV,
+      logsExport: env.POSTHOG_LOGS_EXPORT,
       posthogHost: env.POSTHOG_INGEST_HOST,
       posthogProjectToken: env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
       serviceVersion: env.VERCEL_GIT_COMMIT_SHA,
@@ -65,20 +68,28 @@ export const workspaceLoggerProvider = () => {
 
 /**
  * The Workspace's censoring console logger, its OTel logger when PostHog
- * logging is on, and its tracer over the global tracer provider. The process
+ * logging is on, its tracer over the global tracer provider, and the minimum
+ * log level of every run it serves (`workspaceMinimumLogLevel`). The process
  * logger provider is resolved when the Layer builds, not when this module
  * loads.
  */
 export const WorkspaceObservabilityLive: Layer.Layer<never> = Layer.unwrap(
   Effect.sync(() => {
     const loggerProvider = workspaceLoggerProvider();
-    return Layer.merge(
+    return Layer.mergeAll(
       loggerProvider
         ? createWorkspaceOtelLoggerLive(loggerProvider)
         : WorkspaceLoggerLive,
       createIdentifiedTracingLive({
         serviceVersion: env.VERCEL_GIT_COMMIT_SHA,
-      })
+      }),
+      Layer.succeed(
+        References.MinimumLogLevel,
+        workspaceMinimumLogLevel({
+          deploymentEnvironment: env.VERCEL_ENV,
+          logLevel: env.WORKSPACE_LOG_LEVEL,
+        })
+      )
     );
   })
 );
