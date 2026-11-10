@@ -17,6 +17,7 @@ import {
   CustomerAccountDeletionEndpoint,
   type CustomerAccountDeletionEndpointResult,
 } from "@/features/account/backend/auth/delete-account-endpoint";
+import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import {
   CustomerAvatarProviderError,
@@ -148,10 +149,13 @@ describe("getAccount", () => {
     const api = makeCustomerApiTestServer({
       services: {
         ...linkedAccountServices,
-        resolver: Layer.mock(CustomerAccountResolver, {
-          resolveLink: Effect.fail(
-            customerAccountUnavailable("dotypos.customer-lookup")
-          ),
+        currentAccount: Layer.mock(CurrentCustomerAccount, {
+          resolve: Effect.succeed({
+            kind: "unavailable",
+            session: testCustomerSession,
+            reviewMarker: "absent",
+            failure: customerAccountUnavailable("dotypos.customer-lookup"),
+          }),
         }),
       },
     });
@@ -434,14 +438,13 @@ describe("a read whose client disconnects", () => {
     const api = makeCustomerApiTestServer({
       services: {
         ...linkedAccountServices,
-        resolver: Layer.mock(CustomerAccountResolver, {
-          resolveLink: Effect.sync(() => started.resolve()).pipe(
+        currentAccount: Layer.mock(CurrentCustomerAccount, {
+          resolve: Effect.sync(() => started.resolve()).pipe(
             Effect.andThen(Effect.never),
             Effect.onInterrupt(() =>
               Effect.sync(() => interrupted.resolve("interrupted"))
             )
           ),
-          resolve: Effect.succeed(testLinkedAccount),
         }),
       },
     });

@@ -9,8 +9,8 @@ import {
 } from "@/features/account/backend/account-release-gates-run";
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
-import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
+import { CustomerAccountContactService } from "@/features/account/backend/customer-account-contact.service";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";

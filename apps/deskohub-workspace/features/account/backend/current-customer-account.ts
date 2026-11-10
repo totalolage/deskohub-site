@@ -240,7 +240,10 @@ const makeCurrentCustomerAccount = (
     if (isCustomerProfileMissing(failure)) {
       return { kind: "profile-missing", ...facts };
     }
-    if (failure.reason === "link-required" && isSupportReason(failure.linkReason)) {
+    if (
+      failure.reason === "link-required" &&
+      isSupportReason(failure.linkReason)
+    ) {
       return { kind: "support-required", reason: failure.linkReason, ...facts };
     }
     // The section's recheck under the lock saw the session end or change.
@@ -318,7 +321,9 @@ export class CurrentCustomerAccount extends Context.Service<
         findLink: (accountId) =>
           links
             .find(accountId)
-            .pipe(Effect.mapError(mapCustomerAccountFailure("account-link.read"))),
+            .pipe(
+              Effect.mapError(mapCustomerAccountFailure("account-link.read"))
+            ),
         resolveLink: (accountId) =>
           sections.withActiveAccount(
             accountId,

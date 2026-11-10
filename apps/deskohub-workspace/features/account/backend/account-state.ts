@@ -11,11 +11,11 @@ import {
 import { CustomerAgentConnections } from "@/features/account/backend/auth/customer-agent-connections.service";
 import { CustomerPasskeys } from "@/features/account/backend/auth/customer-passkeys.service";
 import { acceptAutoLinkedReferral } from "@/features/account/backend/auto-linked-referral";
-import { accountReferralOverview } from "@/features/account/backend/current-referral-overview";
 import {
   CurrentCustomerAccount,
   type CustomerAccountStanding,
 } from "@/features/account/backend/current-customer-account";
+import { accountReferralOverview } from "@/features/account/backend/current-referral-overview";
 import type { CustomerAccountSession } from "@/features/account/backend/customer-authentication.service";
 import { CustomerAvatarService } from "@/features/account/backend/customer-avatar.service";
 import { CustomerProfileService } from "@/features/account/backend/customer-profile.service";
@@ -43,7 +43,11 @@ import type { ReferralCode } from "@/features/referrals/client";
 import type { ReferralAccountOverview } from "@/features/referrals/contracts";
 import { ReferralReleaseGate } from "@/features/referrals/referral-release-gate";
 import { RememberedReferral } from "@/features/referrals/remembered-referral.service";
-import { catchRecoverableCause } from "@/shared/backend/workspace-effect";
+import {
+  catchRecoverableCause,
+  failuresAsDefects,
+  isRecoverableCause,
+} from "@/shared/backend/workspace-effect";
 
 /** The standing the account state resolves: never `unlinked`. */
 type ResolvedStanding = Exclude<
@@ -248,6 +252,13 @@ const loadAccount: Effect.Effect<
     CurrentCustomerAccount,
     (currentAccount) => currentAccount.resolve
   ).pipe(
+    // Interruption and Next.js control flow reach the caller, with any typed
+    // failure beside them as a defect.
+    Effect.catchCause((cause) =>
+      Effect.failCause(
+        isRecoverableCause(cause) ? cause : failuresAsDefects(cause)
+      )
+    ),
     Effect.tapError((error) =>
       Effect.logError("Account authentication failed", { error })
     ),
