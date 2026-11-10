@@ -3,6 +3,7 @@ import { CheckoutStatusRoute } from "@/features/checkout/components/checkout-sta
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { homeScreenAppMetadata } from "@/features/mobile-distribution/home-screen-app-metadata";
+import { InstallLaunchRedirect } from "@/features/mobile-distribution/install-launch-redirect";
 import { SignedInInstallBar } from "@/features/mobile-distribution/signed-in-install-bar";
 import { privateOrderPage } from "@/features/reservation/private-order-page.server";
 import type { SearchParamsRecord } from "@/shared/utils";
@@ -37,7 +38,8 @@ export default function LocalizedCheckoutStatusPage({
   return runWithRequestLocale((locale) => (
     <>
       <CheckoutStatusRoute params={params} searchParams={searchParams} />
-      <SignedInInstallBar locale={locale} />
+      <InstallLaunchRedirect />
+      <SignedInInstallBar locale={locale} placement="page" />
     </>
   ));
 }

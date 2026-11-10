@@ -112,8 +112,16 @@ describe("install bar dismissal schedule", () => {
       closes: 1,
       closedAt: start + MINUTE,
       visitStartedAt: start,
-      lastSeenAt: start + MINUTE,
+      lastSeenAt: start,
     });
+  });
+
+  test("a close isn't a page view: the visit still ends 30 minutes after the last view", () => {
+    const closed = noteClose(
+      notePageView({ closes: 0 }, start),
+      start + 25 * MINUTE
+    );
+    expect(viewAt(closed, start + 40 * MINUTE).dismissed).toBe(false);
   });
 });
 
@@ -147,7 +155,7 @@ describe("install bar dismissal storage", () => {
       closes: 1,
       closedAt: start + MINUTE,
       visitStartedAt: start,
-      lastSeenAt: start + MINUTE,
+      lastSeenAt: start,
     });
     expect(storage.recordInstallBarPageView(start + 2 * MINUTE)).toBe(true);
     expect(

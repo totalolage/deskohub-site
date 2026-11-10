@@ -43,3 +43,12 @@ export const useInstallLaunchRedirect = (): void => {
     if (misplaced) location.replace(webAppPath);
   }, []);
 };
+
+/**
+ * Mounts the launch redirect on a page someone may add to the Home Screen,
+ * signed in or not: a saved launch can outlive the session.
+ */
+export function InstallLaunchRedirect(): null {
+  useInstallLaunchRedirect();
+  return null;
+}

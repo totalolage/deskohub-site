@@ -9,6 +9,7 @@ import type { Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { homeScreenAppMetadata } from "@/features/mobile-distribution/home-screen-app-metadata";
 import { InstallBar } from "@/features/mobile-distribution/install-bar";
+import { InstallLaunchRedirect } from "@/features/mobile-distribution/install-launch-redirect";
 import { areReferralsEnabled } from "@/features/referrals/referral-release-gate.server";
 import { PageNavigationBoundary } from "@/shared/components/page-navigation-boundary";
 
@@ -55,7 +56,8 @@ async function AccountLayoutContent({
           {modal}
         </PageNavigationBoundary>
       </AccountLayoutShell>
-      {signedIn && <InstallBar locale={locale} />}
+      <InstallLaunchRedirect />
+      {signedIn && <InstallBar locale={locale} placement="page" />}
     </>
   );
 }

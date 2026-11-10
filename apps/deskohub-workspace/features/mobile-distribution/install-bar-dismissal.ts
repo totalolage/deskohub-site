@@ -55,7 +55,7 @@ export const notePageView = (
   };
 };
 
-/** Notes that the visitor closed the bar. */
+/** Notes that the visitor closed the bar; a close isn't a page view. */
 export const noteClose = (
   dismissal: InstallBarDismissal,
   now: number
@@ -63,7 +63,6 @@ export const noteClose = (
   ...dismissal,
   closes: dismissal.closes + 1,
   closedAt: now,
-  lastSeenAt: now,
 });
 
 /** Whether the visitor's closes still keep the bar hidden at `now`. */
