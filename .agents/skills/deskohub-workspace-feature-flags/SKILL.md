@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-feature-flags
-description: Workspace PostHog feature flags, release gates, generated flag contract, feature-flag sync, flag overrides, POSTHOG_FEATURE_FLAG_OVERRIDES, rollout status, @deskohub/posthog package.
+description: Workspace PostHog feature flags, release gates, generated flag contract, feature-flag sync, flag overrides, POSTHOG_FEATURE_FLAG_OVERRIDES, rollout status, @deskohub/analytics-posthog package.
 ---
 
 # Deskohub Workspace feature flags
@@ -8,7 +8,7 @@ description: Workspace PostHog feature flags, release gates, generated flag cont
 Read the reference for the task:
 
 - Evaluation, constant-flag classification, deployment-scoped overrides, contract sync, or rollout inspection: [references/architecture.md](references/architecture.md).
-- Changes to `@deskohub/posthog`, its generated API client, or its typed feature-flag adapters: [references/posthog-package.md](references/posthog-package.md).
+- Changes to `@deskohub/analytics-posthog`, its generated API client, or its typed feature-flag adapters: [references/posthog-package.md](references/posthog-package.md).
 
 ## Always apply
 
