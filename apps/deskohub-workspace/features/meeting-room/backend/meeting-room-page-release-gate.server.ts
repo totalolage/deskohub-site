@@ -19,5 +19,12 @@ const meetingRoomPageRequest = releaseGateForRequest(
  */
 export const isMeetingRoomPageEnabled = meetingRoomPageRequest.decision;
 
+/**
+ * The same gate for content rendered after `connection()`, which is never
+ * stored: closed while PostHog can't decide the flag.
+ */
+export const isMeetingRoomPageOpenAfterConnection =
+  meetingRoomPageRequest.isOpen;
+
 /** The meeting-room page gate backed by the request's one decision. */
 export const MeetingRoomPageReleaseGateRequest = meetingRoomPageRequest.layer;
