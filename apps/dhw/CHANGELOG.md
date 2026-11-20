@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.39.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.38.0...dhw-v1.39.0) (2026-11-20)
+
+
+### Features
+
+* **dhw:** support withdrawal retries and the reservation attention queue ([7c2c53a](https://github.com/totalolage/deskohub-site/commit/7c2c53aee6619a3a2014bfb26df2c441d32520e2))
+
 ## [1.38.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.37.0...dhw-v1.38.0) (2026-11-18)
 
 
