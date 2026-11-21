@@ -13,9 +13,13 @@ import { type OrderId, orderIdSchema } from "@/features/order";
 import { isCoworkPassesPageOpenAfterConnection } from "@/features/passes/backend/cowork-passes-release-gate.server";
 import { readOwnedPassPurchaseOrderLocale } from "@/features/passes/backend/entry-pack-order";
 import { readPassPurchaseBuyer } from "@/features/passes/backend/pass-purchase-buyer";
-import { loadUnlimitedCheckoutContinuation } from "@/features/passes/backend/unlimited-pass-purchase";
+import {
+  loadUnlimitedCheckoutContinuation,
+  readUnlimitedCheckoutRenewal,
+} from "@/features/passes/backend/unlimited-pass-purchase";
 import { UnlimitedPassCheckout } from "@/features/passes/components/unlimited-pass-checkout";
 import { unlimitedPassDays } from "@/features/passes/pass-offer";
+import { getUnlimitedRenewalPath } from "@/features/passes/routes";
 import {
   beginUnlimitedCheckout,
   getUnlimitedCheckoutAvailability,
@@ -48,6 +52,7 @@ type Query = Parameters<typeof readUnlimitedPassSelection>[0] & {
   readonly submittedOrder?: string | string[];
   readonly supersedeOrder?: string | string[];
   readonly predecessorOrder?: string | string[];
+  readonly renew?: string | string[];
 };
 
 const customerServices = Layer.mergeAll(
@@ -79,6 +84,15 @@ const readOwnedLocale = cache((orderId: OrderId) =>
     })
   )
 );
+
+const readRenewal = (passId: OrderId, resumePending: boolean) =>
+  readUnlimitedCheckoutRenewal(passId, resumePending).pipe(
+    Effect.provide(customerServices),
+    runWorkspaceEffectOrElse("passes.unlimited-checkout-renewal", {
+      failureCode: "unlimited_checkout_unavailable",
+      orElse: () => undefined,
+    })
+  );
 
 async function leaveUnavailableOrder(orderId: OrderId): Promise<never> {
   const locale = await readOwnedLocale(orderId);
@@ -174,26 +188,39 @@ async function UnlimitedPassPageContent({
 }) {
   const query = await searchParams;
   const order = readOrderLink(query);
+  if (query.renew !== undefined && !Schema.is(orderIdSchema)(query.renew))
+    notFound();
+  const requestedRenewal = query.renew;
   const orderId = order?.kind === "edit" ? undefined : order?.orderId;
   const isRetry = order?.kind === "resume" && query.step === "pay";
   const continuationMode = order?.kind === "submitted" ? "submitted" : "draft";
   const { options, startDate } = readUnlimitedPassSelection(query);
   const requestedSelection = startDate && { ...options, startDate };
-  if (order?.kind === "submitted" && !requestedSelection) notFound();
+  if (order?.kind === "submitted" && !requestedSelection && !requestedRenewal)
+    notFound();
   const checkoutPath = (
     targetLocale: Locale,
-    selection: typeof requestedSelection = requestedSelection
+    selection: typeof requestedSelection = requestedSelection,
+    renewsPassId = requestedRenewal
   ) => {
     if (isRetry && orderId)
       return getUnlimitedPassPayPath(targetLocale, orderId);
     if (query.step === "details" && selection) {
-      return getUnlimitedPassDetailsPath(targetLocale, selection, order);
+      return getUnlimitedPassDetailsPath(
+        targetLocale,
+        selection,
+        order,
+        renewsPassId
+      );
     }
+    if (renewsPassId && !order && query.tier === undefined)
+      return getUnlimitedRenewalPath(targetLocale, renewsPassId);
     return getUnlimitedPassChoosePath(
       targetLocale,
       selection ?? options,
       selection?.startDate,
-      order
+      order,
+      renewsPassId
     );
   };
   const [checkout, continuation] = await Promise.all([
@@ -217,7 +244,7 @@ async function UnlimitedPassPageContent({
     orderId &&
       readContinuation(orderId, isRetry ? "payment-retry" : continuationMode),
   ]);
-  if (order && checkout.buyer.kind === "signed-out") {
+  if ((order || requestedRenewal) && checkout.buyer.kind === "signed-out") {
     redirect(getAccountSignInPath(locale, checkoutPath(locale)));
   }
   if (orderId) {
@@ -228,13 +255,47 @@ async function UnlimitedPassPageContent({
   }
 
   const draft = continuation?.kind !== "status" ? continuation : undefined;
+  const resumesDraft = order?.kind === "resume" || order?.kind === "submitted";
+  if (
+    draft &&
+    resumesDraft &&
+    requestedRenewal &&
+    requestedRenewal !== draft.renewsPassId
+  )
+    notFound();
+  const renewsPassId =
+    (resumesDraft && draft ? draft.renewsPassId : requestedRenewal) ??
+    undefined;
+  const renewal =
+    renewsPassId && (!resumesDraft || !draft)
+      ? await readRenewal(renewsPassId, !order && query.tier === undefined)
+      : undefined;
+  if (renewsPassId && (!resumesDraft || !draft) && !renewal) notFound();
+  if (renewal?.pendingOrderId) {
+    redirect(
+      getUnlimitedPassDetailsPath(
+        locale,
+        renewal.selection,
+        {
+          kind: "resume",
+          orderId: renewal.pendingOrderId,
+        },
+        renewsPassId
+      )
+    );
+  }
+
+  const renewalSelection = renewal && {
+    ...(query.tier === undefined ? renewal.selection : options),
+    startDate: renewal.selection.startDate,
+  };
   const selection =
-    order?.kind === "resume" || (order?.kind === "submitted" && draft)
-      ? draft?.selection
-      : requestedSelection;
+    resumesDraft && draft
+      ? draft.selection
+      : (renewalSelection ?? requestedSelection);
   const retryPayment = draft?.kind === "pay" ? draft.retryPayment : undefined;
   if (draft && draft.locale !== locale) {
-    redirect(checkoutPath(draft.locale, selection));
+    redirect(checkoutPath(draft.locale, selection, renewsPassId));
   }
 
   const { today } = checkout;
@@ -248,6 +309,7 @@ async function UnlimitedPassPageContent({
         initialOptions={selection ?? options}
         initialStartDate={selection?.startDate}
         initialDetails={query.step === "details" ? selection : undefined}
+        renewsPassId={renewsPassId}
         initialBounds={{
           today,
           lastStartDate: plainDateStringSchema.make(

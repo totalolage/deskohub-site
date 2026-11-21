@@ -66,6 +66,9 @@ import {
   releaseUnlimitedPassDays,
 } from "./unlimited-pass-holds";
 import {
+  findPendingUnlimitedRenewal,
+  readUnlimitedPassDesk,
+  readUnlimitedPassRenewal,
   readUnlimitedPassSelection,
   recordUnlimitedPassOrder,
   UnlimitedPassAdmissionError,
@@ -73,6 +76,27 @@ import {
 
 type Purchase = typeof passPurchases.$inferSelect;
 const sameSelection = Schema.toEquivalence(unlimitedPassSelectionSchema);
+
+export const readUnlimitedCheckoutRenewal = Effect.fn(
+  "readUnlimitedCheckoutRenewal"
+)(
+  function* (passId: OrderId, resumePending: boolean) {
+    const account = yield* CurrentCustomerAccount;
+    const session = yield* account.requireActive;
+    const now = yield* currentInstant;
+    const selection = yield* readUnlimitedPassRenewal(
+      passId,
+      session.accountId,
+      now
+    );
+    if (!selection) return;
+    const pendingOrderId = resumePending
+      ? yield* findPendingUnlimitedRenewal(passId, session.accountId, now)
+      : undefined;
+    return { selection, pendingOrderId };
+  },
+  Effect.catchTag("CustomerAccountAccessError", () => Effect.undefined)
+);
 
 class UnlimitedPassDraftVoided extends Data.TaggedError(
   "UnlimitedPassDraftVoided"
@@ -175,6 +199,7 @@ type UnlimitedPassPurchaseInput = {
   readonly orderId: OrderId;
   readonly locale: Locale;
   readonly selection: UnlimitedPassSelection;
+  readonly renewsPassId?: OrderId;
   readonly holderEmail?: string;
   readonly recipientName?: string;
   readonly buyerProfile?: CustomerProfileSave;
@@ -260,6 +285,11 @@ const continueUnlimitedPassPurchase = Effect.fn(
     holderEmail && holderEmail !== session.email.toLowerCase()
       ? holderEmail
       : undefined;
+  if (input.renewsPassId && giftEmail) {
+    return yield* new UnlimitedPassAdmissionError({
+      reason: "renewal-unavailable",
+    });
+  }
 
   yield* accounts.withActiveAccount(
     session.accountId,
@@ -282,6 +312,7 @@ const continueUnlimitedPassPurchase = Effect.fn(
           : session.accountId;
         if (
           existing.purchase.holderAccountId !== holderId ||
+          existing.purchase.renewsPassId !== (input.renewsPassId ?? null) ||
           !selection ||
           !sameSelection(selection, input.selection)
         ) {
@@ -329,6 +360,23 @@ const continueUnlimitedPassPurchase = Effect.fn(
             reason: "holds-unavailable",
           });
         }
+        const renewsPassId = input.renewsPassId;
+        const renewal = renewsPassId
+          ? yield* readUnlimitedPassRenewal(
+              renewsPassId,
+              session.accountId,
+              now
+            )
+          : undefined;
+        if (renewsPassId && renewal?.startDate !== input.selection.startDate) {
+          return yield* new UnlimitedPassAdmissionError({
+            reason: "renewal-unavailable",
+          });
+        }
+        const preferredDeskId =
+          renewsPassId && input.selection.tier !== "open-space"
+            ? yield* readUnlimitedPassDesk(renewsPassId)
+            : undefined;
         const contacts = yield* CustomerAccountContactService;
         const standing = yield* current.peek;
         let buyerCustomerId: DotyposCustomerId | undefined;
@@ -386,7 +434,7 @@ const continueUnlimitedPassPurchase = Effect.fn(
           ...(referralCode !== undefined && { referralCode }),
         });
         purchase = yield* withUnlimitedPassCapacity(
-          { selection, startDate },
+          { selection, startDate, ...(preferredDeskId && { preferredDeskId }) },
           ({ days }) =>
             transaction(
               recordUnlimitedPassOrder({
@@ -396,6 +444,7 @@ const continueUnlimitedPassPurchase = Effect.fn(
                 locale,
                 createdAt: now,
                 selection,
+                ...(renewsPassId && { renewsPassId }),
                 quote: {
                   ...quote,
                   selection: referralCode ? { referralCode } : {},
@@ -562,7 +611,12 @@ export const loadUnlimitedCheckoutContinuation = Effect.fn(
       purchase.status === "pending_payment" &&
       purchase.holdsExpireAt &&
       Temporal.Instant.compare(now, purchase.holdsExpireAt) < 0;
-    const base = { locale: purchase.locale, selection, holderEmail };
+    const base = {
+      locale: purchase.locale,
+      selection,
+      holderEmail,
+      renewsPassId: purchase.renewsPassId,
+    };
     if (
       mode === "submitted" &&
       ((priorPaymentAttemptId === null &&

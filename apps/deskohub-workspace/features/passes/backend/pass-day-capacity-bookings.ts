@@ -77,6 +77,7 @@ export const observePassDayInventory = <
       const passDayIntents = intents.map((intent) => {
         const { passId, serviceDate, holdGeneration, holdRequestedAt } = intent;
         if (
+          intent.moveClaim ||
           !holdRequestedAt ||
           intent.providerReservationId ||
           intent.holdAmbiguous ||
@@ -133,6 +134,7 @@ export const getBookingsWithPassDayIntents = (
     return {
       passId: intent.passId,
       canSupersede:
+        !intent.moveClaim &&
         !intent.holdAmbiguous &&
         (!requested || intent.providerReservationId !== null),
       visible: matches.length === 1 ? matches[0] : undefined,

@@ -70,6 +70,7 @@ export interface CreateWorkspaceDotyposReservationInput {
   readonly checkoutDetails: CheckoutDetails;
   readonly reservation: WorkspaceTableAssignmentReservation;
   readonly status: DotyposReservationStatus;
+  readonly allowPassDayMove?: true;
 }
 
 export const createWorkspaceDotyposReservation: (
@@ -94,9 +95,11 @@ export const createWorkspaceDotyposReservation: (
     const { startsAt, endsAt } = yield* getWorkspaceReservationInterval(
       input.reservation
     );
-    const tableId: DotyposTableId = yield* tableAssignments.assignTableId(
-      input.reservation
-    );
+    const tableId: DotyposTableId = yield* input.allowPassDayMove
+      ? tableAssignments.assignTableId(input.reservation, {
+          allowPassDayMove: true,
+        })
+      : tableAssignments.assignTableId(input.reservation);
     const seats = getWorkspaceReservationSeats(input.reservation);
 
     const reservationInput: CreateDotyposReservationInput = {

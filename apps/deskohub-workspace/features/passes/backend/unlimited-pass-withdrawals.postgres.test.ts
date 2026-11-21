@@ -334,6 +334,21 @@ describe.skipIf(!testDatabase)("Unlimited pass withdrawals on Postgres", () => {
        where pass_id = $1 and service_date = '2027-03-29'`,
       [pass.id]
     );
+    await pool.query(
+      `insert into unlimited_pass_day_moves
+       (generation, reservation_id, customer_id, source_reservation_id, source_table_id,
+        target_reservation_id, target_table_id, requested_at, checked_at)
+       select uuid_generate_v7(), id, dotypos_customer_id, dotypos_reservation_id,
+         pass_day_table_id, 'synthetic-staged-hold', '10', now(), now()
+       from workspace_reservations where pass_id = $1 and service_date = '2027-03-30'`,
+      [pass.id]
+    );
+    await expect(settleCancellation(statement)).rejects.toThrow(
+      "still has days to release"
+    );
+    await pool.query(
+      "update unlimited_pass_day_moves set settled_at = now() where target_reservation_id = 'synthetic-staged-hold'"
+    );
     await settleCancellation(statement);
     const remaining = await pool.query(
       `select service_date::text from workspace_reservations

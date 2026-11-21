@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { CurrentCustomerAccount } from "@/features/account/backend/current-customer-account";
 import { CustomerAccountSections } from "@/features/account/backend/customer-account-sections";
 import type { OrderId } from "@/features/order";
-import { CoworkPassesReleaseGate } from "./cowork-passes-release-gate.server";
+import { CoworkPassesReleaseGate } from "./cowork-passes-release-gate";
 import { queueEntryPackGiftResend } from "./entry-pack-gift";
 
 export const requestEntryPackGiftResend = Effect.fn(

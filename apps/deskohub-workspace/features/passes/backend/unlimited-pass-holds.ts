@@ -1,11 +1,12 @@
 import "server-only";
 
 import { type DotyposReservation, DotyposService } from "@deskohub/dotypos";
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull } from "drizzle-orm";
 import { Data, Effect, Array as EffectArray, Result } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type passPurchases,
+  unlimitedPassDayMoves,
   type WorkspaceReservationRow,
   workspaceReservations,
 } from "@/db/schema";
@@ -23,6 +24,7 @@ import {
   createUnlimitedPassDayHold,
   listUnlimitedPassDayHolds,
   matchesUnlimitedPassDayHold,
+  setUnlimitedPassDayHoldStatus,
 } from "./unlimited-pass-dotypos-holds";
 
 export class UnlimitedPassHoldsUnavailable extends Data.TaggedError(
@@ -427,6 +429,28 @@ export const releaseUnlimitedPassDays = Effect.fn("releaseUnlimitedPassDays")(
     );
     const lookup = yield* Effect.result(observePassDayHolds(purchase, rows));
     const provider = Result.isSuccess(lookup) ? lookup.success : undefined;
+    const attachedMoves = yield* db
+      .select({
+        reservationId: unlimitedPassDayMoves.reservationId,
+        targetId: unlimitedPassDayMoves.targetReservationId,
+        generation: unlimitedPassDayMoves.generation,
+        customerId: unlimitedPassDayMoves.customerId,
+        tableId: unlimitedPassDayMoves.targetTableId,
+      })
+      .from(unlimitedPassDayMoves)
+      .innerJoin(
+        workspaceReservations,
+        eq(workspaceReservations.id, unlimitedPassDayMoves.reservationId)
+      )
+      .where(
+        and(
+          eq(workspaceReservations.passId, purchase.id),
+          isNotNull(unlimitedPassDayMoves.attachedAt)
+        )
+      );
+    const movesByTarget = new Map(
+      attachedMoves.map((move) => [move.targetId, move])
+    );
     yield* Effect.forEach(
       rows,
       Effect.fnUntraced(
@@ -460,7 +484,30 @@ export const releaseUnlimitedPassDays = Effect.fn("releaseUnlimitedPassDays")(
               dotyposReservationId: releasedId,
               reservationState: "cancelling",
             };
-            if (released?.status !== "CANCELLED") {
+            const move = movesByTarget.get(releasedId);
+            if (move) {
+              if (
+                move.reservationId !== row.id ||
+                move.generation !== row.passDayHoldGeneration ||
+                move.customerId !== row.dotyposCustomerId ||
+                move.tableId !== row.passDayTableId
+              )
+                return yield* new UnlimitedPassHoldsUnavailable({
+                  reason: "changed",
+                  blockingDates: [row.serviceDate],
+                });
+              yield* setUnlimitedPassDayHoldStatus(
+                releasedId,
+                passDayHold(purchase, row),
+                "CANCELLED"
+              ).pipe(
+                Effect.catchTag("DotyposRejected", (error) =>
+                  error.reason === "not-found"
+                    ? Effect.void
+                    : Effect.fail(error)
+                )
+              );
+            } else if (released?.status !== "CANCELLED") {
               yield* dotypos.cancelReservation(releasedId);
             }
           }

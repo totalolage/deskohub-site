@@ -10,8 +10,15 @@ let submittedOrderCommitted = false;
 let submittedGift = true;
 let commitAfterContinuationRead = false;
 let submittedStatusOnly = false;
+let pendingRenewal = false;
 const ownedOrder = "5413f44e-80ef-430e-9663-ddd7242a2ed0";
 const submittedOrder = "5413f44e-80ef-430e-9663-ddd7242a2ed1";
+const renewalSource = "5413f44e-80ef-430e-9663-ddd7242a2ed2";
+const renewalSelection = {
+  tier: "open-space",
+  coffee: true,
+  startDate: "2026-12-15",
+};
 const holderEmail = testEmailAddress("unlimited-route-holder");
 
 beforeEach(() => {
@@ -21,6 +28,7 @@ beforeEach(() => {
   submittedGift = true;
   commitAfterContinuationRead = false;
   submittedStatusOnly = false;
+  pendingRenewal = false;
 });
 
 mock.module(
@@ -48,6 +56,16 @@ mock.module("@/features/discounts/discount-code-entry.server", () => ({
   getDiscountCodeEntryEnabled: Effect.succeed(false),
 }));
 mock.module("@/features/passes/backend/unlimited-pass-purchase", () => ({
+  readUnlimitedCheckoutRenewal: (passId: OrderId, resumePending: boolean) =>
+    Effect.succeed(
+      buyerSignedIn && passId === renewalSource
+        ? {
+            selection: renewalSelection,
+            pendingOrderId:
+              resumePending && pendingRenewal ? submittedOrder : undefined,
+          }
+        : undefined
+    ),
   loadUnlimitedCheckoutContinuation: (orderId: OrderId) =>
     Effect.sync(() => {
       const owned =
@@ -63,6 +81,7 @@ mock.module("@/features/passes/backend/unlimited-pass-purchase", () => ({
         kind: "details",
         locale: "cs-CZ",
         selection: { tier: "reserved-desk", startDate: "2026-12-01" },
+        renewsPassId: pendingRenewal ? renewalSource : null,
         holderEmail:
           orderId === submittedOrder && !submittedGift
             ? undefined
@@ -172,6 +191,68 @@ async function renderContent(query: Record<string, string | string[]>) {
   const content = page.props.children;
   return content.type(content.props);
 }
+
+test("a renewal preselects the holder's prior configuration and authoritative exclusive end", async () => {
+  const content = await renderContent({ renew: renewalSource });
+  expect(content.props.children.props).toMatchObject({
+    renewsPassId: renewalSource,
+    initialOptions: renewalSelection,
+    initialStartDate: renewalSelection.startDate,
+  });
+  const details = await renderContent({
+    renew: renewalSource,
+    step: "details",
+    tier: "reserved-desk",
+    startDate: "2026-12-21",
+  });
+  expect(details.props.children.props.initialDetails).toEqual({
+    tier: "reserved-desk",
+    startDate: renewalSelection.startDate,
+  });
+});
+
+test("a renewal rejects invalid, repeated, or ineligible source IDs", async () => {
+  for (const renew of [
+    "invalid",
+    [renewalSource, renewalSource],
+    crypto.randomUUID(),
+  ]) {
+    await expect(renderContent({ renew })).rejects.toThrow(
+      "NEXT_HTTP_ERROR_FALLBACK;404"
+    );
+  }
+});
+
+test("a bare renewal link returns through sign-in with its source ID", async () => {
+  buyerSignedIn = false;
+  await expect(renderContent({ renew: renewalSource })).rejects.toHaveProperty(
+    "digest",
+    expect.stringContaining(
+      encodeURIComponent(`/cs-CZ/passes/unlimited?renew=${renewalSource}`)
+    )
+  );
+});
+
+test("a bare renewal link resumes the existing draft, which retains its source without the query", async () => {
+  pendingRenewal = true;
+  submittedOrderCommitted = true;
+  await expect(renderContent({ renew: renewalSource })).rejects.toHaveProperty(
+    "digest",
+    expect.stringContaining(`order=${submittedOrder}`)
+  );
+  const content = await renderContent({
+    order: submittedOrder,
+    step: "details",
+  });
+  expect(content.props.children.props.renewsPassId).toBe(renewalSource);
+  await expect(
+    renderContent({
+      order: submittedOrder,
+      step: "details",
+      renew: ownedOrder,
+    })
+  ).rejects.toThrow("NEXT_HTTP_ERROR_FALLBACK;404");
+});
 
 test("reload restores an owned submitted draft to Details using the committed selection and holder", async () => {
   submittedOrderCommitted = true;

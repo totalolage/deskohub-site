@@ -40,6 +40,7 @@ import {
   restorableReservationStatus,
   validateReservationInterval,
   validateReservationPageNumber,
+  verifyReservationStatusTransition,
 } from "./service";
 
 /** What Dotypos holds when the fake starts. */
@@ -431,6 +432,35 @@ export const makeInMemoryDotypos = (
           writeReservation(reservation, { status: "CANCELLED" })
         ),
         Effect.asVoid
+      ),
+    setReservationStatusIfMatches: (input) =>
+      normalizeReservationBooking(
+        input.expectedBooking,
+        "setReservationStatusIfMatches"
+      ).pipe(
+        Effect.flatMap((booking) =>
+          readReservationRecord(
+            input.reservationId,
+            "setReservationStatusIfMatches",
+            "reservation.version"
+          ).pipe(
+            Effect.flatMap((reservation) =>
+              verifyReservationStatusTransition(
+                reservation,
+                booking,
+                input
+              ).pipe(
+                Effect.flatMap(
+                  Option.match({
+                    onSome: Effect.succeed,
+                    onNone: () =>
+                      writeReservation(reservation, { status: input.status }),
+                  })
+                )
+              )
+            )
+          )
+        )
       ),
     confirmReservation: (reservationId) =>
       readReservationRecord(

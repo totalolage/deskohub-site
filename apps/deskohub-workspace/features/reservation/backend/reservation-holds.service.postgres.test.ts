@@ -475,7 +475,8 @@ describe.skipIf(!postgresDatabase)(
             kind: "cowork",
             date: "2099-06-10",
             entryTier: "open-space",
-          })
+          }),
+          { allowPassDayMove: true }
         );
         expect(holds.dotypos.createReservation).toHaveBeenCalledTimes(1);
         expect(holds.dotypos.createReservation.mock.calls[0]).toEqual([

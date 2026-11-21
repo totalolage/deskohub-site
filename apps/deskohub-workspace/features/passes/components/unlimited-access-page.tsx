@@ -13,7 +13,7 @@ import { formatCount } from "@/shared/utils/number";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { unlimitedPassDays } from "../pass-offer";
 import { getPassTierName } from "../pass-offer.i18n";
-import { getUnlimitedAccessPath } from "../routes";
+import { getUnlimitedAccessPath, getUnlimitedRenewalPath } from "../routes";
 import type { UnlimitedAccessView } from "../unlimited-access";
 import { CopyUnlimitedAccessCode } from "./copy-unlimited-access-code";
 import { UnlimitedDayMeter } from "./unlimited-day-meter";
@@ -64,6 +64,15 @@ export function UnlimitedAccessPage({
                 <a href={getUnlimitedAccessPath(locale, orderId)}>
                   {m.errorPageRetry({}, { locale })}
                 </a>
+              </Button>
+            )}
+            {access.state === "ended" && access.renewalOrderId && (
+              <Button asChild className="mt-6" shape="pill">
+                <Link
+                  href={getUnlimitedRenewalPath(locale, access.renewalOrderId)}
+                >
+                  {m.unlimitedPassRenew({}, { locale })}
+                </Link>
               </Button>
             )}
           </div>

@@ -303,6 +303,7 @@ const beginUnlimitedAction = defineWorkspaceAction(
             "product",
           ]),
           selection: unlimitedPassSelectionSchema,
+          renewsPassId: Schema.optionalKey(orderIdSchema),
           recipientName: Schema.optionalKey(
             unlimitedGiftRecipientNameSchema(locale)
           ),

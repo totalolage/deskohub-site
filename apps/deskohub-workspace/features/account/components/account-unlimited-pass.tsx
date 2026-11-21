@@ -3,6 +3,7 @@ import type { AccountUnlimitedPass } from "@/features/account/account-unlimited-
 import { type Locale, m } from "@/features/i18n";
 import { UnlimitedDayMeter } from "@/features/passes/components/unlimited-day-meter";
 import { unlimitedPassDays } from "@/features/passes/pass-offer";
+import { GuardedLink } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
 import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { formatCount } from "@/shared/utils/number";
@@ -152,8 +153,19 @@ export function AccountUnlimitedPassCard({ pass, locale }: PassProps) {
             {m.accountPassBoughtOn({ date: pass.boughtOn }, { locale })}
           </p>
         </div>
-        {pass.status === "active" && (
-          <UnlimitedDoorCodeLink href={pass.accessPath} locale={locale} />
+        {(pass.renewalPath || pass.status === "active") && (
+          <div className="flex flex-wrap items-center gap-2">
+            {pass.renewalPath && (
+              <Button asChild size="sm" variant="secondary" wrap>
+                <GuardedLink href={pass.renewalPath}>
+                  {m.unlimitedPassRenew({}, { locale })}
+                </GuardedLink>
+              </Button>
+            )}
+            {pass.status === "active" && (
+              <UnlimitedDoorCodeLink href={pass.accessPath} locale={locale} />
+            )}
+          </div>
         )}
       </div>
     </article>

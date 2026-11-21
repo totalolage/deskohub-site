@@ -229,6 +229,30 @@ test("Unlimited Continue normalizes a gift name without returning it", async () 
   expect(JSON.stringify(result)).not.toContain(recipientName);
 });
 
+test("Unlimited Continue passes the validated renewal source to purchase admission", async () => {
+  const orderId = orderIdSchema.make(crypto.randomUUID());
+  const renewsPassId = orderIdSchema.make(crypto.randomUUID());
+  unlimitedFailures.set(
+    orderId,
+    new purchase.EntryPackPurchaseError({ reason: "holds-unavailable" })
+  );
+  const input = {
+    locale: "en-US",
+    orderId,
+    buyerEmail,
+    renewsPassId,
+    selection: { tier: "reserved-desk", startDate: "2026-11-20" },
+  } as const;
+  await withoutReferer(() => beginUnlimitedCheckout(input));
+  expect(beginUnlimited.mock.calls.at(-1)?.[0]).toMatchObject({ renewsPassId });
+  const calls = beginUnlimited.mock.calls.length;
+  const response = await withoutReferer(() =>
+    beginUnlimitedCheckout({ ...input, renewsPassId: "invalid" })
+  );
+  expect(response.validationErrors?.fieldErrors.renewsPassId).toBeDefined();
+  expect(beginUnlimited).toHaveBeenCalledTimes(calls);
+});
+
 test.each([
   {
     error: new purchase.EntryPackPurchaseError({ reason: "holds-unavailable" }),

@@ -74,7 +74,7 @@ import {
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import { atInstant } from "@/shared/testing/workspace-test-clock.test-utils";
 import { passPurchaseQuoteCodec } from "../pass-purchase-quote";
-import { CoworkPassesReleaseGate } from "./cowork-passes-release-gate.server";
+import { CoworkPassesReleaseGate } from "./cowork-passes-release-gate";
 import {
   claimEntryPackGifts,
   queueEntryPackGiftResend,

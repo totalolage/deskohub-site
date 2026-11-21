@@ -15,7 +15,10 @@ import {
   workspaceMeetingRoomReservationTableTag,
   workspaceOfficeReservationTableTag,
 } from "@/features/checkout/backend/reservation";
-import type { TableBooking } from "@/features/checkout/backend/reservation/workspace-table-occupancy";
+import type {
+  OccupancyWindow,
+  TableBooking,
+} from "@/features/checkout/backend/reservation/workspace-table-occupancy";
 import {
   isWorkspaceCoworkCurrentProductTier,
   type WorkspaceCoworkProductTier,
@@ -23,6 +26,10 @@ import {
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
 } from "@/features/checkout/product-catalog";
+import {
+  type MovablePassDay,
+  planPassDayMove,
+} from "@/features/passes/backend/pass-day-move-plan";
 import { getCoworkReservationInterval } from "@/features/reservation/cowork-reservation";
 import {
   type CoworkStay,
@@ -51,6 +58,7 @@ export type AvailabilityEvaluationInput = {
   readonly tables: readonly DotyposTable[];
   readonly bookings: readonly TableBooking[];
   readonly fullyOccupiedDates: ReadonlySet<string>;
+  readonly movablePassDays?: readonly MovablePassDay[];
 };
 
 export type AvailabilityEvaluation = Pick<
@@ -63,7 +71,10 @@ export type AvailabilityEvaluation = Pick<
   | "unavailableMonitorOptions"
 >;
 
-type Occupancy = ReadonlyMap<DotyposTableId, number>;
+type Occupancy = {
+  readonly byTableId: ReadonlyMap<DotyposTableId, number>;
+  readonly window?: OccupancyWindow;
+};
 
 /**
  * Evaluates table availability for a date range synchronously. Each offer's
@@ -81,7 +92,8 @@ export const evaluateAvailability = (
   const inventory = createInventoryView(
     input.tables,
     input.bookings,
-    coworkStay
+    coworkStay,
+    input.movablePassDays
   );
   const getDateOccupancy = createDateOccupancyLookup(inventory, input);
   const isOfferClosed = createOfferClosureLookup(input, coworkStay);
@@ -277,7 +289,7 @@ const evaluateSelectedDate = (
 ): SelectedDateAvailability => {
   const selectedDateOccupancy: Occupancy = dates.includes(selectedDate)
     ? getDateOccupancy(selectedDate)
-    : new Map();
+    : { byTableId: new Map<DotyposTableId, number>() };
   // A fully occupied Calendar day closes every tier, whatever the tables say.
   const unavailableCoworkTiers = fullyOccupiedDates.has(selectedDate)
     ? [...workspaceCoworkCurrentTiers]
@@ -337,9 +349,10 @@ export const createMeetingRoomIntervalEvaluator = ({
   tables,
   bookings,
   fullyOccupiedDates,
+  movablePassDays = [],
 }: Pick<
   AvailabilityEvaluationInput,
-  "tables" | "bookings" | "fullyOccupiedDates"
+  "tables" | "bookings" | "fullyOccupiedDates" | "movablePassDays"
 >): MeetingRoomIntervalEvaluator => {
   // Capacity reads only meeting-room tables' occupancy, so other tables'
   // bookings need not be scanned for each interval.
@@ -348,10 +361,16 @@ export const createMeetingRoomIntervalEvaluator = ({
       workspaceMeetingRoomReservationTableTag,
     ]).map(({ id }) => id)
   );
+  const movableRoomBookings = movablePassDays.filter(({ booking }) =>
+    meetingRoomTableIds.has(booking.tableId)
+  );
   const inventory = createInventoryView(
     tables,
-    bookings.filter(({ tableId }) => meetingRoomTableIds.has(tableId)),
-    undefined
+    movableRoomBookings.length > 0
+      ? bookings
+      : bookings.filter(({ tableId }) => meetingRoomTableIds.has(tableId)),
+    undefined,
+    movableRoomBookings
   );
   const closedDates = [...fullyOccupiedDates];
 
@@ -381,7 +400,8 @@ const createInventoryView = (
   tables: readonly DotyposTable[],
   bookings: readonly TableBooking[],
   /** The queried Reserved Desk stay; other tiers ignore it. */
-  coworkStay: CoworkStay | undefined
+  coworkStay: CoworkStay | undefined,
+  movablePassDays: readonly MovablePassDay[] = []
 ) => {
   const occupancyByInterval = new Map<string, Occupancy>();
   const coworkIntervals = new Map<string, ReservationInterval>();
@@ -393,10 +413,11 @@ const createInventoryView = (
     const cached = occupancyByInterval.get(key);
     if (cached) return cached;
 
-    const occupancy = getTableBookingOccupancyById(
-      bookings,
-      getOccupancyWindow(interval)
-    );
+    const window = getOccupancyWindow(interval);
+    const occupancy = {
+      window,
+      byTableId: getTableBookingOccupancyById(bookings, window),
+    };
     occupancyByInterval.set(key, occupancy);
     return occupancy;
   };
@@ -431,6 +452,24 @@ const createInventoryView = (
   return {
     getOccupancy,
     getCoworkOfferOccupancy,
+    hasCapacity: (
+      candidates: readonly WorkspaceTableCandidate[],
+      { byTableId, window }: Occupancy,
+      seats = workspaceBookingSeatCount,
+      requireEmpty = false
+    ) =>
+      hasCandidateCapacity(candidates, byTableId, seats, requireEmpty) ||
+      (window !== undefined &&
+        planPassDayMove({
+          sources: movablePassDays,
+          bookings,
+          tables,
+          candidates,
+          window,
+          occupancy: byTableId,
+          seats,
+          requireEmpty,
+        }) !== undefined),
     getCoworkOfferCandidates: (query: WorkspaceCoworkTableCandidateQuery) =>
       getCandidates(
         `cowork/${query.entryTier}/${query.monitorOption ?? ""}`,
@@ -509,7 +548,7 @@ const isCoworkUnavailableForSelection = (
           ? workspaceProductMonitorOptionTableTags[monitorOption]
           : []),
       ]),
-      occupancy
+      occupancy.byTableId
     );
   }
 
@@ -528,7 +567,7 @@ const isCoworkOfferUnavailable = (
   occupancy: Occupancy,
   query: WorkspaceCoworkTableCandidateQuery
 ) =>
-  !hasCandidateCapacity(inventory.getCoworkOfferCandidates(query), occupancy);
+  !inventory.hasCapacity(inventory.getCoworkOfferCandidates(query), occupancy);
 
 /**
  * A cowork category is offered when ANY eligible table for it is available in
@@ -562,7 +601,7 @@ const isMeetingRoomUnavailable = (
   inventory: InventoryView,
   occupancy: Occupancy
 ) =>
-  !hasCandidateCapacity(
+  !inventory.hasCapacity(
     inventory.getTaggedCandidates([workspaceMeetingRoomReservationTableTag]),
     occupancy,
     workspaceBookingSeatCount,
@@ -574,7 +613,7 @@ const isOfficeUnavailable = (
   occupancy: Occupancy,
   seats: number
 ) =>
-  !hasCandidateCapacity(
+  !inventory.hasCapacity(
     inventory.getTaggedCandidates([workspaceOfficeReservationTableTag]),
     occupancy,
     seats,

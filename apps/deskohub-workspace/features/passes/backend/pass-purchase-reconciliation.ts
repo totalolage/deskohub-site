@@ -33,9 +33,11 @@ import { PaymentProvidersLive } from "@/features/checkout/backend/payment/paymen
 import { ProviderPaymentFinalizationService } from "@/features/checkout/backend/payment/provider-payment-finalization.service";
 import { providerOrderAbandonmentTimeoutMinutes } from "@/features/checkout/provider-order-abandonment";
 import { endedUnpaidPaymentStates } from "@/features/order";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { entryPackGiftInvitationDue } from "./entry-pack-gift";
 import { settlePassPurchase } from "./entry-pack-settlement";
+import { PassDayMoves } from "./unlimited-pass-day-moves";
 import { releaseUnlimitedPassDays } from "./unlimited-pass-holds";
 
 /** Retries paid fulfillment and resolves abandoned attempts from provider facts. */
@@ -264,10 +266,18 @@ export const runPassPurchaseReconciliation = Effect.fn(
   }) {
     const summary = yield* reconcilePassPurchases(input);
     const releasesChecked = yield* reconcileUnlimitedPassReleases(input);
-    return { ...summary, releasesChecked };
+    const moves = yield* PassDayMoves;
+    const reseatsChecked = yield* moves.reconcile(input.limit);
+    return { ...summary, releasesChecked, reseatsChecked };
   },
   Effect.provide(
     Layer.mergeAll(
+      PassDayMoves.Default.pipe(
+        Layer.provide(WorkspaceReservationRepository.Live),
+        Layer.provide(WorkspaceDatabase.Default),
+        Layer.provide(WorkspaceDatabaseAdvisoryLock.Default),
+        Layer.provide(WorkspaceDotyposLayer)
+      ),
       WorkspaceDatabase.Default,
       WorkspaceDatabaseAdvisoryLock.Default,
       WorkspaceDotyposLayer,

@@ -2,10 +2,13 @@ import {
   and,
   desc,
   eq,
+  exists,
   gte,
   isNotNull,
+  isNull,
   ne,
   notInArray,
+  or,
   sql,
 } from "drizzle-orm";
 import { Context, Effect, Layer, Option, Schema } from "effect";
@@ -19,6 +22,7 @@ import {
   orders,
   passPurchases,
   paymentAttempts,
+  unlimitedPassDayMoves,
   workspaceReservations,
 } from "@/db/schema";
 import type { CustomerAccountId } from "@/features/account/customer-account";
@@ -357,6 +361,18 @@ export class UnlimitedPassWithdrawals extends Context.Service<
               message: "The withdrawn Unlimited pass id is invalid.",
             });
           }
+          const pendingMove = db
+            .select({ id: unlimitedPassDayMoves.generation })
+            .from(unlimitedPassDayMoves)
+            .where(
+              and(
+                eq(
+                  unlimitedPassDayMoves.reservationId,
+                  workspaceReservations.id
+                ),
+                isNull(unlimitedPassDayMoves.settledAt)
+              )
+            );
           const pendingDays = db
             .select({ id: workspaceReservations.id })
             .from(workspaceReservations)
@@ -367,11 +383,15 @@ export class UnlimitedPassWithdrawals extends Context.Service<
                   workspaceReservations.serviceDate,
                   passPurchases.accessEndsOn
                 ),
-                // The release worker uses hold_expired when no provider hold was made.
-                notInArray(workspaceReservations.reservationState, [
-                  "cancelled",
-                  "hold_expired",
-                ])
+                or(
+                  // The release worker uses hold_expired when no provider hold was made.
+                  notInArray(workspaceReservations.reservationState, [
+                    "cancelled",
+                    "hold_expired",
+                  ]),
+                  // A staged replacement or replaced source may still hold a seat.
+                  exists(pendingMove)
+                )
               )
             );
           const [pass] = yield* db

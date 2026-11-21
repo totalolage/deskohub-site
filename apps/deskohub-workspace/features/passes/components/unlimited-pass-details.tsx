@@ -1,5 +1,6 @@
 import { getAccountSignInPath } from "@/features/account/routes";
 import { m } from "@/features/i18n";
+import type { OrderId } from "@/features/order";
 import { formatMoney, moneyWithValue } from "@/shared/money/money";
 import { getUnlimitedPassPrice, unlimitedPassCoffeePrice } from "../pass-offer";
 import { formatPassDate, getPassTierName } from "../pass-offer.i18n";
@@ -17,10 +18,12 @@ import {
 export function UnlimitedPassDetails({
   selection,
   order,
+  renewsPassId,
   ...props
 }: PassPurchaseDetailsProps & {
   readonly selection: UnlimitedPassSelection;
   readonly order?: UnlimitedPassOrderLink;
+  readonly renewsPassId?: OrderId;
 }) {
   const { locale } = props;
   const passPrice = getUnlimitedPassPrice({
@@ -38,9 +41,10 @@ export function UnlimitedPassDetails({
     <PassPurchaseDetails
       {...props}
       product={{ kind: "unlimited" }}
+      allowGift={!renewsPassId}
       signInPath={getAccountSignInPath(
         locale,
-        getUnlimitedPassDetailsPath(locale, selection, order)
+        getUnlimitedPassDetailsPath(locale, selection, order, renewsPassId)
       )}
       summary={
         <>

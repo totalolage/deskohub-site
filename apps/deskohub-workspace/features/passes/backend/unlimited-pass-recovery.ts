@@ -19,6 +19,7 @@ import {
   UnlimitedPassHoldsUnavailable,
 } from "./unlimited-pass-holds";
 import {
+  readUnlimitedPassDesk,
   readUnlimitedPassSelection,
   recordReplacementUnlimitedPassHolds,
 } from "./unlimited-pass-orders";
@@ -110,10 +111,15 @@ export const prepareUnlimitedPassRecovery = Effect.fn(
     const selection = readUnlimitedPassSelection(previous);
     if (!selection) return false;
     const now = yield* currentInstant;
+    const preferredDeskId =
+      previous.renewsPassId && selection.tier !== "open-space"
+        ? yield* readUnlimitedPassDesk(previous.renewsPassId)
+        : undefined;
     const replaced = yield* withUnlimitedPassCapacity(
       {
         selection,
         startDate: Temporal.PlainDate.from(previous.validFrom),
+        ...(preferredDeskId && { preferredDeskId }),
       },
       ({ days }) =>
         transaction(

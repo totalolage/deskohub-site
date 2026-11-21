@@ -55,6 +55,7 @@ import {
 } from "@/shared/backend/email/delivery-reports";
 import { currencyCZK } from "@/shared/money/currencies";
 import { fixtureReservationAuthorId } from "@/shared/testing/workspace-fixtures.test-utils";
+import { waitForPostgresLockWaiter } from "@/shared/testing/workspace-postgres-lock-waiters.test-utils";
 import {
   createWorkspacePostgresSuiteDatabase,
   type WorkspacePostgresSuiteDatabase,
@@ -84,6 +85,7 @@ import {
   releaseUnlimitedPassDays,
 } from "./unlimited-pass-holds";
 import {
+  readUnlimitedPassRenewal,
   recordReplacementUnlimitedPassHolds,
   recordUnlimitedPassOrder,
 } from "./unlimited-pass-orders";
@@ -122,9 +124,13 @@ const record = (
   {
     tier = "reserved-desk",
     createdAt = Temporal.Now.instant(),
+    renewsPassId,
+    assignedTableId = tableId,
   }: {
     tier?: "open-space" | "reserved-desk";
     createdAt?: Temporal.Instant;
+    renewsPassId?: typeof passPurchases.$inferSelect.id;
+    assignedTableId?: typeof tableId;
   } = {}
 ) =>
   Effect.gen(function* () {
@@ -140,6 +146,7 @@ const record = (
         buyer: { accountId: buyer, customerId },
         holder: { accountId: holder, customerId },
         createdAt,
+        ...(renewsPassId && { renewsPassId }),
         selection:
           tier === "open-space"
             ? { startDate: date(start), tier, coffee: false }
@@ -153,11 +160,38 @@ const record = (
         },
         days: Array.from({ length: unlimitedPassDays }, (_, index) => ({
           serviceDate: date(start.add({ days: index })),
-          tableId,
+          tableId: assignedTableId,
         })),
       })
     );
   });
+
+const recordRenewableGift = Effect.fnUntraced(function* (claimed = true) {
+  const buyer = newAccountId();
+  const holder = newAccountId();
+  const now = Temporal.Now.instant();
+  const start = getCurrentWorkspaceDate(now).add({ days: 2 });
+  const { db } = yield* WorkspaceDatabase;
+  yield* db.insert(customerAccounts).values({ id: holder });
+  const source = yield* record(start, buyer, holder, { createdAt: now });
+  yield* db.insert(authUser).values(
+    [buyer, holder].map((id) => ({
+      id,
+      email: testEmailAddress(`unlimited-renewal-${id}`),
+      name: "Synthetic renewal account",
+      emailVerified: true,
+    }))
+  );
+  yield* db
+    .update(passPurchases)
+    .set({
+      status: "active",
+      giftIssuedAt: now,
+      giftClaimedAt: claimed ? now : null,
+    })
+    .where(eq(passPurchases.id, source.id));
+  return { source, buyer, holder, now };
+});
 
 const expirePass = Effect.fnUntraced(function* (
   orderId: typeof orders.$inferSelect.id
@@ -198,6 +232,132 @@ it("serializes overlapping entitlement purchases for the same holder", async () 
   expect(
     results.filter(Result.isFailure).map((result) => result.failure)
   ).toEqual([expect.objectContaining({ reason: "overlapping-pass" })]);
+});
+
+it("serializes an overlapping regular gift and renewal bought by different accounts for the same holder", async () => {
+  const testDatabase = database!;
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const { source, buyer, holder, now } = yield* recordRenewableGift();
+      const start = Temporal.PlainDate.from(source.validUntil);
+      const { transaction } = yield* WorkspaceDatabase;
+      const renewalRecorded = yield* Deferred.make<void>();
+      const regular = yield* Deferred.await(renewalRecorded).pipe(
+        Effect.andThen(record(start.add({ days: 1 }), buyer, holder)),
+        Effect.result,
+        Effect.forkChild
+      );
+
+      const renewal = yield* transaction(
+        record(start, holder, holder, {
+          createdAt: now,
+          renewsPassId: source.id,
+        }).pipe(
+          Effect.tap(() => Deferred.succeed(renewalRecorded, undefined)),
+          Effect.tap(() =>
+            Effect.promise(() =>
+              waitForPostgresLockWaiter(testDatabase.pool, {
+                condition:
+                  "locktype = 'transactionid' and database is null and pid in (select pid from pg_stat_activity where datname = current_database())",
+                description:
+                  "the regular purchase waiting for the renewal holder lock",
+              })
+            )
+          )
+        )
+      );
+
+      expect(renewal).toMatchObject({
+        buyerAccountId: holder,
+        holderAccountId: holder,
+        renewsPassId: source.id,
+      });
+      expect(yield* Fiber.join(regular)).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "UnlimitedPassAdmissionError",
+          reason: "overlapping-pass",
+        },
+      });
+    }).pipe(Effect.provide(testDatabase.layer))
+  );
+});
+
+it("offers a gifted Unlimited renewal only to its current holder after claim", async () => {
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const { source, buyer, holder, now } = yield* recordRenewableGift(false);
+      expect(
+        yield* readUnlimitedPassRenewal(source.id, holder, now)
+      ).toBeUndefined();
+      const { db } = yield* WorkspaceDatabase;
+      yield* db
+        .update(passPurchases)
+        .set({ giftClaimedAt: now })
+        .where(eq(passPurchases.id, source.id));
+
+      expect(
+        yield* readUnlimitedPassRenewal(source.id, buyer, now)
+      ).toBeUndefined();
+      expect(yield* readUnlimitedPassRenewal(source.id, holder, now)).toEqual({
+        tier: "reserved-desk",
+        startDate: source.validUntil,
+      });
+    }).pipe(Effect.provide(database!.layer))
+  );
+});
+
+it("rejects late renewal recovery after a regular order takes the holder's window", async () => {
+  const testDatabase = database!;
+  const competingTableId = DotyposTableIdSchema.make("43");
+  const tables = [tableId, competingTableId].map((id) =>
+    Schema.decodeUnknownSync(DotyposTableSchema)({
+      id,
+      _cloudId: "1",
+      display: true,
+      enabled: true,
+      name: `Synthetic reserved desk ${id}`,
+      seats: "1",
+      tags: ["cowork:reserved-desk"],
+    })
+  );
+  const provider = makeInMemoryDotypos({ tables });
+  const services = Layer.mergeAll(
+    testDatabase.layer,
+    provider.layer,
+    WorkspaceDatabaseAdvisoryLock.makeLayer(testDatabase.databasePool),
+    WorkspaceReservationRepository.Default.pipe(
+      Layer.provide(testDatabase.layer)
+    ),
+    Layer.mock(GoogleCalendarWorkspaceLimitationsService, {
+      listLimitations: () => Effect.succeed([]),
+    })
+  );
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const { source, buyer, holder, now } = yield* recordRenewableGift();
+      const start = Temporal.PlainDate.from(source.validUntil);
+      const renewal = yield* record(start, holder, holder, {
+        createdAt: now,
+        renewsPassId: source.id,
+      });
+      yield* createUnlimitedPassHolds(renewal);
+      const attemptId = yield* expirePass(renewal.id);
+      yield* record(start, buyer, holder, {
+        assignedTableId: competingTableId,
+      });
+
+      expect(
+        yield* prepareUnlimitedPassRecovery(renewal.id, attemptId).pipe(
+          WorkspaceLockSections.unlimitedPassRecovery(renewal.id)
+        )
+      ).toBe(false);
+      expect(
+        [...provider.reservations.values()].map(({ status }) => status)
+      ).toEqual(Array(unlimitedPassDays).fill("CANCELLED"));
+    }).pipe(Effect.provide(services))
+  );
 });
 
 it("records the earliest verified buyer delivery for the winning attempt only", async () => {
@@ -1002,6 +1162,69 @@ function unlimitedNewDraftLayer(
     })
   );
 }
+
+it("starts a renewal at the source's exclusive end and rejects a replay with a changed source", async () => {
+  const provider = makeUnlimitedDraftProvider();
+  const { source, holder } = await Effect.runPromise(
+    recordRenewableGift().pipe(Effect.provide(database!.layer))
+  );
+  const layer = unlimitedNewDraftLayer(
+    holder,
+    testEmailAddress(`unlimited-renewal-${holder}`),
+    provider.service
+  );
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const input = {
+        orderId: orderIdSchema.make(crypto.randomUUID()),
+        locale: "en-US" as const,
+        selection: {
+          tier: "reserved-desk" as const,
+          startDate: source.validUntil,
+        },
+      };
+      const lateStart = Temporal.PlainDate.from(source.validUntil).add({
+        days: 1,
+      });
+      const offByOne = yield* Effect.flip(
+        beginUnlimitedPassPurchase({
+          ...input,
+          selection: { ...input.selection, startDate: date(lateStart) },
+          renewsPassId: source.id,
+        })
+      );
+      expect(offByOne).toMatchObject({
+        _tag: "UnlimitedPassAdmissionError",
+        reason: "renewal-unavailable",
+      });
+
+      const renewal = { ...input, renewsPassId: source.id };
+      expect(yield* beginUnlimitedPassPurchase(renewal)).toMatchObject({
+        id: input.orderId,
+        validFrom: source.validUntil,
+        renewsPassId: source.id,
+      });
+      expect(yield* beginUnlimitedPassPurchase(renewal)).toMatchObject({
+        id: input.orderId,
+        renewsPassId: source.id,
+      });
+
+      for (const replay of [
+        input,
+        { ...input, renewsPassId: orderIdSchema.make(crypto.randomUUID()) },
+      ]) {
+        expect(
+          yield* Effect.flip(beginUnlimitedPassPurchase(replay))
+        ).toMatchObject({
+          _tag: "UnlimitedPassAdmissionError",
+          reason: "draft-changed",
+        });
+      }
+      expect(provider.reservations.size).toBe(unlimitedPassDays);
+    }).pipe(Effect.provide(layer))
+  );
+});
 
 it.each(["linked", "matched", "new", "uncertain create"] as const)(
   "uses a supplied gift name only to create a missing Dotypos profile (%s)",

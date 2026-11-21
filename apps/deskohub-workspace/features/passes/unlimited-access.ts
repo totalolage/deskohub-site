@@ -1,3 +1,4 @@
+import type { OrderId } from "@/features/order";
 import type { PlainDate } from "@/shared/utils/temporal";
 import type { PassTier } from "./pass-offer";
 
@@ -16,7 +17,11 @@ type UnlimitedAccessDay = UnlimitedAccessPeriod & {
 };
 
 export type UnlimitedAccessView =
-  | (UnlimitedAccessPeriod & { readonly state: "before-start" | "ended" })
+  | (UnlimitedAccessPeriod & { readonly state: "before-start" })
+  | (UnlimitedAccessPeriod & {
+      readonly state: "ended";
+      readonly renewalOrderId?: OrderId;
+    })
   | (UnlimitedAccessDay & { readonly state: "closed" | "retry" })
   | (UnlimitedAccessDay & {
       readonly state: "available";

@@ -3,15 +3,16 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { DotyposCustomerId, DotyposTableId } from "@deskohub/dotypos";
 import { NexiCorrelationIdSchema } from "@deskohub/nexi";
-import { and, eq, inArray, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, ne, or } from "drizzle-orm";
 import { Data, Effect, Schema } from "effect";
-import { WorkspaceTransaction } from "@/db/database.service";
+import { WorkspaceDatabase, WorkspaceTransaction } from "@/db/database.service";
 import {
   customerAccounts,
   orders,
   passPurchases,
   workspaceReservations,
 } from "@/db/schema";
+import { hasVerifiedActiveLogin } from "@/features/account/backend/customer-account-by-email";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 import {
   checkoutAttemptKeySchema,
@@ -31,8 +32,10 @@ import {
 } from "../pass-purchase-quote";
 import {
   getUnlimitedPassEndDate,
+  isUnlimitedPassRenewalEligible,
   type UnlimitedPassSelection,
 } from "../unlimited-pass";
+import { overlapsUnlimitedPassWindow } from "./unlimited-pass-window";
 
 export class UnlimitedPassAdmissionError extends Data.TaggedError(
   "UnlimitedPassAdmissionError"
@@ -40,6 +43,7 @@ export class UnlimitedPassAdmissionError extends Data.TaggedError(
   readonly reason:
     | "holder-unavailable"
     | "overlapping-pass"
+    | "renewal-unavailable"
     | "draft-changed"
     | "purchase-conflict";
 }> {}
@@ -71,6 +75,81 @@ export function readUnlimitedPassSelection(
       };
   }
 }
+
+export const readUnlimitedPassRenewal = Effect.fn("readUnlimitedPassRenewal")(
+  function* (
+    passId: OrderId,
+    holderAccountId: CustomerAccountId,
+    now: Temporal.Instant
+  ) {
+    const { db } = yield* WorkspaceDatabase;
+    const [source] = yield* db
+      .select()
+      .from(passPurchases)
+      .where(
+        and(
+          eq(passPurchases.id, passId),
+          eq(passPurchases.product, "unlimited"),
+          eq(passPurchases.holderAccountId, holderAccountId),
+          hasVerifiedActiveLogin(db, holderAccountId),
+          or(
+            eq(passPurchases.buyerAccountId, passPurchases.holderAccountId),
+            isNotNull(passPurchases.giftClaimedAt)
+          )
+        )
+      );
+    if (!source || !isUnlimitedPassRenewalEligible(source, now)) return;
+    const selection = readUnlimitedPassSelection(source);
+    if (!selection) return;
+    return { ...selection, startDate: source.validUntil };
+  }
+);
+
+export const readUnlimitedPassDesk = Effect.fn("readUnlimitedPassDesk")(
+  function* (passId: OrderId) {
+    const { db } = yield* WorkspaceDatabase;
+    const [day] = yield* db
+      .select({ tableId: workspaceReservations.passDayTableId })
+      .from(workspaceReservations)
+      .innerJoin(
+        passPurchases,
+        eq(passPurchases.id, workspaceReservations.passId)
+      )
+      .where(
+        and(
+          eq(workspaceReservations.passId, passId),
+          ne(passPurchases.tier, "open-space")
+        )
+      )
+      .orderBy(workspaceReservations.serviceDate)
+      .limit(1);
+    return day?.tableId ?? undefined;
+  }
+);
+
+export const findPendingUnlimitedRenewal = Effect.fn(
+  "findPendingUnlimitedRenewal"
+)(function* (
+  passId: OrderId,
+  buyerAccountId: CustomerAccountId,
+  now: Temporal.Instant
+) {
+  const { db } = yield* WorkspaceDatabase;
+  const [pending] = yield* db
+    .select({ id: passPurchases.id })
+    .from(passPurchases)
+    .where(
+      and(
+        eq(passPurchases.renewsPassId, passId),
+        eq(passPurchases.buyerAccountId, buyerAccountId),
+        eq(passPurchases.holderAccountId, buyerAccountId),
+        eq(passPurchases.status, "pending_payment"),
+        gt(passPurchases.holdsExpireAt, now)
+      )
+    )
+    .limit(1);
+  return pending?.id;
+});
 
 export const recordReplacementUnlimitedPassHolds = Effect.fn(
   "recordReplacementUnlimitedPassHolds"
@@ -179,12 +258,8 @@ export const requireUnlimitedPassWindow = Effect.fn(
     .where(
       and(
         ne(passPurchases.id, input.orderId),
-        eq(passPurchases.product, "unlimited"),
         eq(passPurchases.holderAccountId, input.holderAccountId),
-        lt(passPurchases.validFrom, input.validUntil),
-        sql`coalesce(${passPurchases.accessEndsOn}, ${passPurchases.validUntil}) > ${input.validFrom}`,
-        sql`(${passPurchases.status} in ('pending_payment', 'active') or
-          (${passPurchases.status} in ('withdrawn', 'cancelled') and ${passPurchases.accessEndsOn} > ${passPurchases.validFrom}))`
+        overlapsUnlimitedPassWindow(passPurchases, input, true)
       )
     )
     .limit(1);
@@ -209,6 +284,7 @@ export const recordUnlimitedPassOrder = Effect.fn("recordUnlimitedPassOrder")(
     readonly locale: Locale;
     readonly createdAt: Temporal.Instant;
     readonly selection: UnlimitedPassSelection;
+    readonly renewsPassId?: OrderId;
     readonly quote: PassPurchaseQuote;
     readonly days: readonly PassDayPlan[];
   }) {
@@ -234,6 +310,22 @@ export const recordUnlimitedPassOrder = Effect.fn("recordUnlimitedPassOrder")(
       validFrom,
       validUntil,
     });
+    if (input.renewsPassId) {
+      const renewal = yield* readUnlimitedPassRenewal(
+        input.renewsPassId,
+        holder.accountId,
+        createdAt
+      );
+      if (
+        !renewal ||
+        renewal.startDate !== validFrom ||
+        buyer.accountId !== holder.accountId
+      ) {
+        return yield* new UnlimitedPassAdmissionError({
+          reason: "renewal-unavailable",
+        });
+      }
+    }
 
     const [order] = yield* db
       .insert(orders)
@@ -262,6 +354,7 @@ export const recordUnlimitedPassOrder = Effect.fn("recordUnlimitedPassOrder")(
         id: orderId,
         buyerAccountId: buyer.accountId,
         holderAccountId: holder.accountId,
+        renewsPassId: input.renewsPassId,
         product: "unlimited",
         tier: selection.tier,
         unlimitedCoffee:

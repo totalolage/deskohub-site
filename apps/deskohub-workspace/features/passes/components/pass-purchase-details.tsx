@@ -48,12 +48,14 @@ export function PassPurchaseDetails({
   error,
   signInPath,
   product,
+  allowGift = true,
   summary,
   onChangeSelection,
   onSubmit,
 }: PassPurchaseDetailsProps & {
   readonly signInPath: string;
   readonly product: EntryPackProduct | { readonly kind: "unlimited" };
+  readonly allowGift?: boolean;
   readonly summary: ReactNode;
 }) {
   const schema = passPurchaseDetailsSchema(locale, product.kind);
@@ -66,7 +68,9 @@ export function PassPurchaseDetails({
       }),
     },
   });
-  const [gift, setGift] = useState(initialValues?.holderEmail !== undefined);
+  const [gift, setGift] = useState(
+    allowGift && initialValues?.holderEmail !== undefined
+  );
   const { getValues } = form;
   useImperativeHandle(
     draftRef,
@@ -185,7 +189,11 @@ export function PassPurchaseDetails({
                   }[product.kind]({}, { locale })}
                 </p>
               </fieldset>
-              <fieldset disabled={pending} className="space-y-3">
+              <fieldset
+                disabled={pending || !allowGift}
+                hidden={!allowGift}
+                className="space-y-3"
+              >
                 <legend className="sr-only">
                   {{
                     "entry-pack": m.entryPackCheckoutHolder,

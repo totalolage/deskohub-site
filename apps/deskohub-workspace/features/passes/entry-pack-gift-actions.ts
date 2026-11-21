@@ -7,7 +7,7 @@ import { CustomerAccountSections } from "@/features/account/backend/customer-acc
 import { type Locale, locales } from "@/features/i18n";
 import { type OrderId, orderIdSchema } from "@/features/order";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
-import { CoworkPassesReleaseGate } from "./backend/cowork-passes-release-gate.server";
+import { CoworkPassesReleaseGate } from "./backend/cowork-passes-release-gate";
 import { requestEntryPackGiftResend } from "./backend/entry-pack-gift-resend";
 
 const resendAction = defineWorkspaceAction(

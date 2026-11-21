@@ -305,7 +305,8 @@ const getPassDates = (startDate: Temporal.PlainDate) =>
 
 const allocateUnlimitedPass = Effect.fn("allocateUnlimitedPass")(function* (
   selection: UnlimitedPassCapacitySelection,
-  dates: readonly Temporal.PlainDate[]
+  dates: readonly Temporal.PlainDate[],
+  preferredDeskId?: DotyposTableId
 ) {
   const now = Temporal.Now.instant();
   const inventory = yield* loadUnlimitedInventory(dates, now);
@@ -355,12 +356,15 @@ const allocateUnlimitedPass = Effect.fn("allocateUnlimitedPass")(function* (
     });
   }
 
-  // Rank the remaining desks with the same selection logic as a day booking.
-  const desk = (yield* selectWorkspaceTableFromCandidates(
-    commonDesks,
-    tables,
-    days[0]!.occupancy
-  ))!;
+  const preferredDesk = commonDesks.find(({ id }) => id === preferredDeskId);
+  // Fall back to the day-booking ranking when the previous desk cannot cover the period.
+  const desk =
+    preferredDesk ??
+    (yield* selectWorkspaceTableFromCandidates(
+      commonDesks,
+      tables,
+      days[0]!.occupancy
+    ))!;
   return {
     pinnedDesk: { id: desk.id, name: desk.name },
     days: days.map(({ serviceDate, interval }) => ({
@@ -376,11 +380,16 @@ export const withUnlimitedPassCapacity = <A, E, R>(
   input: {
     readonly selection: UnlimitedPassCapacitySelection;
     readonly startDate: Temporal.PlainDate;
+    readonly preferredDeskId?: DotyposTableId;
   },
   save: (plan: UnlimitedPassCapacityPlan) => Effect.Effect<A, E, R>
 ) => {
   const dates = getPassDates(input.startDate);
-  return allocateUnlimitedPass(input.selection, dates).pipe(
+  return allocateUnlimitedPass(
+    input.selection,
+    dates,
+    input.preferredDeskId
+  ).pipe(
     Effect.flatMap(save),
     WorkspaceLockSections.reservationCapacity(dates)
   );

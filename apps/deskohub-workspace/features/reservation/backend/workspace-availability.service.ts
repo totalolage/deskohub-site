@@ -15,9 +15,14 @@ import {
 } from "@/features/checkout/backend/reservation";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import {
+  CoworkPassesReleaseGate,
+  CoworkPassesReleaseGateForRun,
+} from "@/features/passes/backend/cowork-passes-release-gate";
+import {
   getBookingsWithPassDayIntents,
   observePassDayInventory,
 } from "@/features/passes/backend/pass-day-capacity-bookings";
+import { findMovablePassDays } from "@/features/passes/backend/pass-day-move-plan";
 import {
   type CoworkReservationDetails,
   getCoworkReservationIntervalInput,
@@ -43,6 +48,7 @@ import {
   getOfficeReservationIntervalInput,
   type OfficeReservationDetails,
 } from "@/features/reservation/office-reservation";
+import { getWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { ReservationIntervalValidationError } from "@/features/reservation/reservation-interval-domain";
 import { normalizeReservationIntervalFields } from "@/features/reservation/reservation-interval-normalization";
 import {
@@ -191,7 +197,8 @@ export interface IWorkspaceAvailabilityService {
    * office needs every Prague day it spans.
    */
   readonly ensureAvailable: (
-    reservation: AvailabilityReservation
+    reservation: AvailabilityReservation,
+    options?: { readonly allowPassDayMove: true }
   ) => Effect.Effect<
     void,
     | AvailabilityError
@@ -223,6 +230,7 @@ const implementation = Effect.gen(function* () {
   const advisoryInventory = yield* AdvisoryAvailabilityInventory;
   const providerInventory = yield* makeProviderInventory;
   const workspaceReservations = yield* WorkspaceReservationRepository;
+  const passGate = yield* Effect.serviceOption(CoworkPassesReleaseGate);
 
   const loadInventory = Effect.fn("workspaceAvailability.loadInventory")(
     function* (
@@ -231,6 +239,7 @@ const implementation = Effect.gen(function* () {
         /** The consecutive dates the inventory snapshot covers. */
         readonly dates: readonly Temporal.PlainDate[];
         readonly occupancyExclusion?: WorkspaceAvailabilityOccupancyExclusion;
+        readonly allowPassDayMove?: boolean;
       }
     ) {
       yield* Effect.logInfo("Workspace availability inventory load started");
@@ -294,6 +303,19 @@ const implementation = Effect.gen(function* () {
           ? [replacementReservationId]
           : []),
       ]);
+      const movablePassDays =
+        input.allowPassDayMove &&
+        observations.passDayIntents.some(
+          ({ movableReservationId }) => movableReservationId
+        ) &&
+        Option.isSome(passGate) &&
+        (yield* passGate.value.isOpen)
+          ? findMovablePassDays(
+              activeReservations,
+              observations.passDayIntents,
+              getWorkspaceDate(yield* currentInstant)
+            )
+          : [];
       // Counts, not the records: whole inventories made each row tens of KB.
       yield* Effect.logInfo(
         "Workspace availability inventory load completed"
@@ -314,6 +336,7 @@ const implementation = Effect.gen(function* () {
           observations.passDayIntents
         ),
         limitations,
+        movablePassDays,
       };
     },
     (effect) =>
@@ -365,7 +388,8 @@ const implementation = Effect.gen(function* () {
   )(
     function* (
       inventory: AvailabilityInventory,
-      input: WorkspaceAvailabilityRequest
+      input: WorkspaceAvailabilityRequest,
+      allowPassDayMove: boolean
     ) {
       const { query } = input;
       yield* Effect.annotateLogsScoped(query);
@@ -381,13 +405,12 @@ const implementation = Effect.gen(function* () {
         : undefined;
       yield* Effect.annotateLogsScoped({ selectedDate });
 
-      const { tables, bookings, limitations } = yield* loadInventory(
-        inventory,
-        {
+      const { tables, bookings, limitations, movablePassDays } =
+        yield* loadInventory(inventory, {
           dates: getInventoryDates(query, dates),
           occupancyExclusion: input.occupancyExclusion,
-        }
-      );
+          allowPassDayMove,
+        });
       const evaluation = yield* Effect.fromResult(
         evaluateAvailability({
           query,
@@ -396,6 +419,7 @@ const implementation = Effect.gen(function* () {
           selectedDate,
           tables,
           bookings,
+          movablePassDays,
           fullyOccupiedDates: getFullyOccupiedCalendarDates(limitations),
         })
       );
@@ -448,7 +472,10 @@ const implementation = Effect.gen(function* () {
   );
 
   const ensureAvailable = Effect.fn("workspaceAvailability.ensureAvailable")(
-    function* (reservation: AvailabilityReservation) {
+    function* (
+      reservation: AvailabilityReservation,
+      options?: { readonly allowPassDayMove: true }
+    ) {
       const query = yield* getAvailabilityEnsureQuery(reservation);
       yield* Effect.annotateLogsScoped(query);
       yield* Effect.logInfo("Workspace availability assurance started");
@@ -469,13 +496,17 @@ const implementation = Effect.gen(function* () {
         query.kind === coworkReservationKind
           ? { from: query.date, to: query.date }
           : getAvailabilityTouchedDateRange(reservationInterval);
-      const availability = yield* computeAvailability(providerInventory, {
-        query: {
-          ...query,
-          from: availabilityRange.from,
-          to: availabilityRange.to,
+      const availability = yield* computeAvailability(
+        providerInventory,
+        {
+          query: {
+            ...query,
+            from: availabilityRange.from,
+            to: availabilityRange.to,
+          },
         },
-      });
+        options?.allowPassDayMove === true
+      );
       yield* Effect.annotateLogsScoped(availabilityLogFields(availability));
 
       const unavailableDate = availability.unavailableDates[0];
@@ -518,11 +549,12 @@ const implementation = Effect.gen(function* () {
     readonly dates: readonly Temporal.PlainDate[];
     readonly occupancyExclusion?: WorkspaceAvailabilityOccupancyExclusion;
   }) =>
-    loadInventory(advisoryInventory, input).pipe(
-      Effect.map(({ tables, bookings, limitations }) =>
+    loadInventory(advisoryInventory, { ...input, allowPassDayMove: true }).pipe(
+      Effect.map(({ tables, bookings, limitations, movablePassDays }) =>
         createMeetingRoomIntervalEvaluator({
           tables,
           bookings,
+          movablePassDays,
           fullyOccupiedDates: getFullyOccupiedCalendarDates(limitations),
         })
       )
@@ -660,7 +692,8 @@ const implementation = Effect.gen(function* () {
   );
 
   return {
-    getAvailability: (input) => computeAvailability(advisoryInventory, input),
+    getAvailability: (input) =>
+      computeAvailability(advisoryInventory, input, true),
     getMeetingRoomStartTimes,
     getMeetingRoomUnavailableDates,
     ensureAvailable,
@@ -678,6 +711,7 @@ export class WorkspaceAvailabilityService extends Context.Service<
     Layer.provide(SharedAvailabilityInventoryLive),
     Layer.provide(GoogleCalendarWorkspaceLimitationsService.Live),
     Layer.provide(WorkspaceDotyposLayer),
+    Layer.provide(CoworkPassesReleaseGateForRun),
     Layer.provide(
       WorkspaceReservationRepository.Default.pipe(
         Layer.provide(WorkspaceDatabase.Default)

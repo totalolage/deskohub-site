@@ -65,6 +65,7 @@ type UnlimitedPassCheckoutProps = PassPurchasePaymentActions & {
   readonly initialOptions: UnlimitedPassOptions;
   readonly initialStartDate?: PlainDate;
   readonly initialDetails?: UnlimitedPassSelection;
+  readonly renewsPassId?: OrderId;
   readonly initialBounds: Pick<
     UnlimitedPassAvailabilityData,
     "today" | "lastStartDate"
@@ -90,6 +91,7 @@ type UnlimitedPassCheckoutProps = PassPurchasePaymentActions & {
     orderId: OrderId;
     locale: Locale;
     selection: UnlimitedPassSelection;
+    renewsPassId?: OrderId;
     supersedeOrderIds?: readonly OrderId[];
     buyerEmail: string;
     holderEmail?: string;
@@ -124,6 +126,7 @@ export function UnlimitedPassCheckout({
   initialOptions,
   initialStartDate,
   initialDetails,
+  renewsPassId,
   initialBounds,
   draft,
   retryPayment,
@@ -133,6 +136,7 @@ export function UnlimitedPassCheckout({
   payCheckout,
   repriceCheckout,
 }: UnlimitedPassCheckoutProps) {
+  const fixedStartDate = renewsPassId ? initialStartDate : undefined;
   const [options, setOptions] = useState(initialOptions);
   const [startDate, setStartDate] = useState(initialStartDate);
   const [calendarMonth, setCalendarMonth] = useState(() => {
@@ -156,7 +160,7 @@ export function UnlimitedPassCheckout({
   });
   const [paymentRequested, setPaymentRequested] = useState(false);
   const [details, setDetails] = useState<DetailsSchema["Encoded"] | undefined>(
-    draft?.holderEmail
+    !renewsPassId && draft?.holderEmail
       ? {
           holderEmail: draft.holderEmail,
           billing: defaultReservationBillingSelection,
@@ -260,7 +264,13 @@ export function UnlimitedPassCheckout({
     window.history.replaceState(
       null,
       "",
-      getUnlimitedPassChoosePath(locale, options, startDate, order)
+      getUnlimitedPassChoosePath(
+        locale,
+        options,
+        startDate,
+        order,
+        renewsPassId
+      )
     );
     focusStep({ kind: "choose" });
   };
@@ -277,11 +287,18 @@ export function UnlimitedPassCheckout({
     setOrder(editedOrder);
     setError(undefined);
     setOptions(nextOptions);
-    setStartDate(nextDate);
+    const date = fixedStartDate ?? nextDate;
+    setStartDate(date);
     window.history.replaceState(
       null,
       "",
-      getUnlimitedPassChoosePath(locale, nextOptions, nextDate, editedOrder)
+      getUnlimitedPassChoosePath(
+        locale,
+        nextOptions,
+        date,
+        editedOrder,
+        renewsPassId
+      )
     );
   };
 
@@ -292,7 +309,7 @@ export function UnlimitedPassCheckout({
     window.history.replaceState(
       null,
       "",
-      getUnlimitedPassDetailsPath(locale, selection, order)
+      getUnlimitedPassDetailsPath(locale, selection, order, renewsPassId)
     );
     focusStep({ kind: "details", selection });
   };
@@ -308,7 +325,9 @@ export function UnlimitedPassCheckout({
     setError(undefined);
     const { recipientName, ...draftDetails } = values;
     setDetails(draftDetails);
-    const enteredHolder = draftDetails.holderEmail?.toLowerCase();
+    const enteredHolder = renewsPassId
+      ? undefined
+      : draftDetails.holderEmail?.toLowerCase();
     const holderEmail =
       enteredHolder === buyer.email.toLowerCase() ? undefined : enteredHolder;
     let submission: SubmittedOrder;
@@ -342,7 +361,7 @@ export function UnlimitedPassCheckout({
       window.history.replaceState(
         null,
         "",
-        getUnlimitedPassDetailsPath(locale, selection, order)
+        getUnlimitedPassDetailsPath(locale, selection, order, renewsPassId)
       );
       setOrder(order);
     };
@@ -352,6 +371,7 @@ export function UnlimitedPassCheckout({
         orderId: attempt.orderId,
         locale,
         selection,
+        ...(renewsPassId && { renewsPassId }),
         ...(attempt.predecessorOrderIds.length > 0 && {
           supersedeOrderIds: attempt.predecessorOrderIds,
         }),
@@ -402,7 +422,12 @@ export function UnlimitedPassCheckout({
         window.location.assign(
           getAccountSignInPath(
             locale,
-            getUnlimitedPassDetailsPath(locale, selection, submission)
+            getUnlimitedPassDetailsPath(
+              locale,
+              selection,
+              submission,
+              renewsPassId
+            )
           )
         );
       } else if (result.data?.status === "ready") {
@@ -429,11 +454,17 @@ export function UnlimitedPassCheckout({
           ? { kind: "edit", predecessorOrderIds: remaining }
           : undefined;
         setOrder(edit);
-        setStartDate(undefined);
+        setStartDate(fixedStartDate);
         window.history.replaceState(
           null,
           "",
-          getUnlimitedPassChoosePath(locale, options, undefined, edit)
+          getUnlimitedPassChoosePath(
+            locale,
+            options,
+            fixedStartDate,
+            edit,
+            renewsPassId
+          )
         );
         if (
           predecessorOrderIds.length === remaining.length &&
@@ -444,11 +475,17 @@ export function UnlimitedPassCheckout({
         const dates = new Intl.ListFormat(locale).format(
           result.data.blockingDates.map((date) => formatPassDate(date, locale))
         );
+        const blockingDatesMessage = renewsPassId
+          ? m.unlimitedPassCheckoutRenewalBlockingDates
+          : m.unlimitedPassCheckoutBlockingDates;
+        const unavailableMessage = renewsPassId
+          ? m.unlimitedPassCheckoutNoStarts
+          : m.unlimitedPassCheckoutStartUnavailable;
         focusStep(
           { kind: "choose" },
           dates
-            ? m.unlimitedPassCheckoutBlockingDates({ dates }, { locale })
-            : m.unlimitedPassCheckoutStartUnavailable({}, { locale })
+            ? blockingDatesMessage({ dates }, { locale })
+            : unavailableMessage({}, { locale })
         );
       } else {
         setError(
@@ -518,6 +555,7 @@ export function UnlimitedPassCheckout({
             numberOfMonths={numberOfMonths}
             options={options}
             startDate={startDate}
+            fixedStartDate={fixedStartDate}
             availability={calendarAvailability}
             onOptionsChange={updateSelection}
             onMonthChange={setCalendarMonth}
@@ -535,6 +573,7 @@ export function UnlimitedPassCheckout({
           initialValues={details}
           draftRef={detailsDraft}
           order={order}
+          renewsPassId={renewsPassId}
           error={error}
           onChangeSelection={goToChoose}
           onSubmit={submitDetails}
@@ -559,7 +598,12 @@ export function UnlimitedPassCheckout({
             locale,
             step.retry
               ? getUnlimitedPassPayPath(locale, step.orderId)
-              : getUnlimitedPassDetailsPath(locale, step.selection, order)
+              : getUnlimitedPassDetailsPath(
+                  locale,
+                  step.selection,
+                  order,
+                  renewsPassId
+                )
           )}
           headingRef={heading}
           onRequestPayment={() => setPaymentRequested(true)}

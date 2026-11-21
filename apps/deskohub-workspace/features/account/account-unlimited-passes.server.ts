@@ -10,11 +10,17 @@ import type { CustomerAccountId } from "@/features/account/customer-account";
 import type { Locale } from "@/features/i18n";
 import type { OrderId } from "@/features/order";
 import { recoverEntryPackGiftClaims } from "@/features/passes/backend/entry-pack-gift";
+import { hasUnlimitedRenewalOverlap } from "@/features/passes/backend/unlimited-pass-window";
 import { getPassTierName } from "@/features/passes/pass-offer.i18n";
-import { getUnlimitedAccessPath } from "@/features/passes/routes";
+import {
+  getUnlimitedAccessPath,
+  getUnlimitedRenewalPath,
+} from "@/features/passes/routes";
+import { isUnlimitedPassRenewalEligible } from "@/features/passes/unlimited-pass";
 import { getUnlimitedPassAccessDay } from "@/features/passes/unlimited-pass-period";
 import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { SharedAvailabilityInventoryLive } from "@/features/reservation/backend/availability-inventory-cache.server";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
   catchRecoverableCause,
   runWorkspaceEffectOrElse,
@@ -25,7 +31,7 @@ import {
   formatPlainDateRange,
 } from "@/shared/utils/date-time-format";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { currentPlainDate } from "@/shared/utils/temporal";
+import { currentInstant } from "@/shared/utils/temporal";
 
 export type AccountUnlimitedPass = {
   readonly orderId: OrderId;
@@ -33,6 +39,7 @@ export type AccountUnlimitedPass = {
   readonly boughtOn: string;
   readonly boughtForYou: boolean;
   readonly period: string;
+  readonly renewalPath?: string;
   readonly seating:
     | { readonly kind: "shared" }
     | { readonly kind: "assigned"; readonly name?: string };
@@ -65,6 +72,7 @@ const readHolderPasses = Effect.fn("account.readHolderUnlimitedPasses")(
         status: passPurchases.status,
         paidAt: orders.paidAt,
         paymentState: orders.paymentState,
+        renewalOverlaps: hasUnlimitedRenewalOverlap,
         deskId: workspaceReservations.passDayTableId,
       })
       .from(passPurchases)
@@ -109,11 +117,11 @@ export const loadAccountUnlimitedPasses = Effect.fn(
   const { accountId, verifiedSignInAt } = standing.session;
   yield* recoverEntryPackGiftClaims(accountId, verifiedSignInAt);
   const timeZone = workspaceSiteConstants.location.timeZone;
-  const [passes, currentDate] = yield* Effect.all(
-    [readHolderPasses(accountId), currentPlainDate(timeZone)],
+  const [passes, now] = yield* Effect.all(
+    [readHolderPasses(accountId), currentInstant],
     { concurrency: "unbounded" }
   );
-  const today = Temporal.PlainDate.from(currentDate);
+  const today = getCurrentWorkspaceDate(now);
   const tables = passes.some((pass) => pass.deskId !== null)
     ? yield* Effect.flatMap(
         AdvisoryAvailabilityInventory,
@@ -149,6 +157,11 @@ export const loadAccountUnlimitedPasses = Effect.fn(
       boughtForYou: pass.buyerAccountId !== accountId,
       period,
       seating,
+      ...(pass.paymentState === "paid" &&
+        !pass.renewalOverlaps &&
+        isUnlimitedPassRenewalEligible(pass, now) && {
+          renewalPath: getUnlimitedRenewalPath(locale, pass.orderId),
+        }),
     };
     const day = getUnlimitedPassAccessDay({ ...pass, date: today });
 

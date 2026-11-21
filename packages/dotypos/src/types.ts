@@ -195,6 +195,15 @@ export interface CreateDotyposReservationInput
   extends DotyposReservationBooking {
   readonly status: DotyposReservationStatus;
   readonly note?: string;
+  /** The caller has stored a marker and will reconcile an inconclusive POST. */
+  readonly singleAttempt?: true;
+}
+
+export interface SetMatchingDotyposReservationStatusInput {
+  readonly reservationId: DotyposReservationId;
+  readonly status: "CONFIRMED" | "CANCELLED";
+  readonly expectedBooking: DotyposReservationBooking;
+  readonly expectedNoteLine: string;
 }
 
 export interface UpdateDotyposReservationInput {

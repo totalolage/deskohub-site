@@ -4,6 +4,7 @@ import {
   Context,
   Data,
   Effect,
+  identity,
   Layer,
   Match,
   Option,
@@ -25,16 +26,22 @@ import {
   DotyposReservationCancelledError,
   DotyposReservationNotRestorable,
   DotyposUnavailable,
-  type DotyposUncertain,
+  DotyposUncertain,
+  DotyposVersionConflict,
   type DotyposWriteFailure,
 } from "../errors";
-import type {
-  CreateCustomerRequest,
-  CreateReservationRequest,
-  UpdateCustomerRequest,
-  UpdateReservationRequest,
+import {
+  type CreateCustomerRequest,
+  type CreateReservationRequest,
+  ReservationWriteRecord,
+  type UpdateCustomerRequest,
+  type UpdateReservationRequest,
 } from "../generated/effect.gen";
-import { type DotyposTimestamp, formatDotyposTimestamp } from "../timestamp";
+import {
+  type DotyposTimestamp,
+  DotyposTimestampFromString,
+  formatDotyposTimestamp,
+} from "../timestamp";
 import type {
   CreateDotyposReservationInput,
   DotyposCategory,
@@ -51,6 +58,7 @@ import type {
   DotyposReservationInterval,
   DotyposTable,
   RestoreDotyposReservationInput,
+  SetMatchingDotyposReservationStatusInput,
   UpdateDotyposReservationInput,
 } from "../types";
 import {
@@ -71,6 +79,7 @@ import { customerLifecycle } from "../utils/customer-lifecycle";
 import {
   DotyposAccessToken,
   DotyposGeneratedClient,
+  DotyposRequestDispatch,
   toDotyposWireFailure,
 } from "./api";
 import {
@@ -691,20 +700,69 @@ export const normalizeReservationBooking = (
 /** The facts in which `reservation` books something other than `booking`. */
 const changedBookingFields = (
   reservation: DotyposReservation,
-  booking: DotyposReservationBooking
+  booking: DotyposReservationBooking,
+  sameInstant = (read: string, expected: Date) =>
+    Date.parse(read) === expected.getTime()
 ): readonly DotyposReservationBookingField[] =>
   (
     [
       ["customer", reservation._customerId === booking.customerId],
       ["table", reservation._tableId === booking.tableId],
-      [
-        "start",
-        Date.parse(reservation.startDate) === booking.startDate.getTime(),
-      ],
-      ["end", Date.parse(reservation.endDate) === booking.endDate.getTime()],
+      ["start", sameInstant(reservation.startDate, booking.startDate)],
+      ["end", sameInstant(reservation.endDate, booking.endDate)],
       ["seats", Number(reservation.seats) === booking.seats],
     ] as const
   ).flatMap(([field, matches]) => (matches ? [] : [field]));
+
+const decodeReservationInstant = Schema.decodeOption(
+  DotyposTimestampFromString
+);
+const sameReservationInstant = (read: string, expected: Date) =>
+  Option.exists(
+    decodeReservationInstant(read),
+    (microseconds) => microseconds === BigInt(expected.getTime()) * BigInt(1000)
+  );
+
+/** A conditional status change may act only on its booking and marker. */
+export const verifyReservationStatusTransition = (
+  reservation: DotyposReservation,
+  booking: DotyposReservationBooking,
+  {
+    status,
+    expectedNoteLine,
+    reservationId,
+  }: Pick<
+    SetMatchingDotyposReservationStatusInput,
+    "status" | "expectedNoteLine" | "reservationId"
+  >
+): Effect.Effect<Option.Option<DotyposReservation>, DotyposVersionConflict> => {
+  if (
+    reservation.id === reservationId &&
+    reservation.status === "CANCELLED" &&
+    status === "CANCELLED"
+  ) {
+    return Effect.succeedSome(reservation);
+  }
+  if (
+    reservation.id !== reservationId ||
+    reservation.status === "CANCELLED" ||
+    changedBookingFields(reservation, booking, sameReservationInstant).length >
+      0 ||
+    !expectedNoteLine.trim() ||
+    !reservation.note?.split("\n").includes(expectedNoteLine)
+  ) {
+    return Effect.fail(
+      new DotyposVersionConflict({
+        operation: "setReservationStatusIfMatches",
+        message:
+          "The Dotypos reservation no longer matches the expected booking.",
+      })
+    );
+  }
+  return reservation.status === status
+    ? Effect.succeedSome(reservation)
+    : Effect.succeedNone;
+};
 
 /**
  * The status of a reservation restoreCancelledReservation may act on: one
@@ -1014,7 +1072,7 @@ export interface IDotyposService {
   >;
 
   // ---- Unconditional writes: DotyposWriteFailure ----
-  /** Retries only DotyposUnavailable{rate-limited | empty-response}. */
+  /** Retries only rate limiting and empty responses unless singleAttempt is set. */
   readonly createReservation: (
     input: CreateDotyposReservationInput
   ) => Effect.Effect<DotyposReservation, DotyposWriteFailure>;
@@ -1033,6 +1091,10 @@ export interface IDotyposService {
   ) => Effect.Effect<void, DotyposWriteFailure>;
 
   // ---- Conditional (ETag read, then If-Match PATCH) writes: DotyposConditionalWriteFailure ----
+  /** Confirms or cancels the matching booking and note line under its ETag. */
+  readonly setReservationStatusIfMatches: (
+    input: SetMatchingDotyposReservationStatusInput
+  ) => Effect.Effect<DotyposReservation, DotyposConditionalWriteFailure>;
   readonly updateReservation: (
     input: UpdateDotyposReservationInput
   ) => Effect.Effect<DotyposReservation, DotyposConditionalWriteFailure>;
@@ -1119,6 +1181,13 @@ export interface IDotyposService {
   >;
 }
 
+const readCreateReceiptId = Schema.decodeUnknownOption(
+  Schema.Struct({ id: DotyposReservationIdSchema })
+);
+const decodeCreatedReservationRecords = Schema.decodeUnknownEffect(
+  Schema.Array(ReservationWriteRecord)
+);
+
 const makeDotyposService: Effect.Effect<
   IDotyposService,
   never,
@@ -1134,7 +1203,8 @@ const makeDotyposService: Effect.Effect<
    */
   const runDotyposRequest = <A, E, Request extends DotyposRequest>(
     effect: Effect.Effect<A, E>,
-    call: DotyposCall<Request>
+    call: DotyposCall<Request>,
+    onTimeout = () => dotyposTimeout(call)
   ): Effect.Effect<A, DotyposRequestFailure<Request>> =>
     effect.pipe(
       Effect.mapError((error) =>
@@ -1143,11 +1213,14 @@ const makeDotyposService: Effect.Effect<
           call
         )
       ),
-      requestPolicy.attempt(() => dotyposTimeout(call))
+      requestPolicy.attempt(onTimeout)
     );
 
-  /** A creation answered with an empty array created nothing, so it can be retried. */
-  const firstCreated = <A>(items: readonly A[], call: DotyposCall) => {
+  /** The default creation profile can retry an empty batch response. */
+  const firstCreated = <A>(
+    items: readonly A[],
+    call: DotyposCall
+  ): Effect.Effect<A, DotyposUnavailable> => {
     const item = items[0];
     return item
       ? Effect.succeed(item)
@@ -1319,13 +1392,68 @@ const makeDotyposService: Effect.Effect<
         operation: "createReservation",
         request: "reservation.create",
       } as const;
+      const incompleteCreation = (
+        createdReservationIds?: readonly DotyposReservationId[]
+      ) =>
+        new DotyposUncertain({
+          ...call,
+          reason: "invalid-response",
+          message:
+            "Dotypos did not provide a usable reservation after creation.",
+          ...(createdReservationIds && { createdReservationIds }),
+        });
+      const dispatch = { waitingForToken: false, expiredBeforeDispatch: false };
+      const post = client.createReservation(config.cloudId, {
+        payload: [request],
+      });
       const reservationResult = yield* runDotyposRequest(
-        client.createReservation(config.cloudId, { payload: [request] }),
-        call
+        input.singleAttempt
+          ? post.pipe(Effect.provideService(DotyposRequestDispatch, dispatch))
+          : post,
+        call,
+        () => {
+          if (!dispatch.waitingForToken) return dotyposTimeout(call);
+          dispatch.expiredBeforeDispatch = true;
+          return new DotyposUnavailable({
+            ...call,
+            reason: "timeout",
+            message: "Dotypos access token request timed out.",
+          });
+        }
       ).pipe(
-        Effect.flatMap((reservations) => firstCreated(reservations, call)),
+        Effect.flatMap((reservations) => {
+          if (input.singleAttempt && reservations.length > 1) {
+            const decoded = reservations.map((receipt) =>
+              readCreateReceiptId(receipt)
+            );
+            const ids = [
+              ...new Set(
+                decoded.flatMap((receipt) =>
+                  Option.isSome(receipt) ? [receipt.value.id] : []
+                )
+              ),
+            ];
+            if (ids.length > 1 || decoded.some(Option.isNone)) {
+              return Effect.fail(incompleteCreation(ids));
+            }
+          }
+          return decodeCreatedReservationRecords(reservations).pipe(
+            Effect.mapError(() =>
+              dotyposInvalidResponse(call, {
+                message: "Dotypos returned malformed reservation records.",
+              })
+            ),
+            Effect.flatMap((records) =>
+              firstCreated(records, call).pipe(
+                Effect.mapError((error) =>
+                  input.singleAttempt ? incompleteCreation() : error
+                )
+              )
+            )
+          );
+        }),
         Effect.withSpan("dotyposService.createReservation"),
-        retryDotyposRequest(call.request),
+        input.singleAttempt ? identity : retryDotyposRequest(call.request),
         Effect.tapError((error) =>
           Effect.logError("Dotypos reservation creation failed", {
             error,
@@ -1333,16 +1461,22 @@ const makeDotyposService: Effect.Effect<
         )
       );
 
-      const reservationId = yield* decodeResponseIdentifier(
+      const reservation = yield* decodeResponseIdentifier(
         DotyposReservationIdSchema,
         reservationResult.id ?? "",
         "Reservation ID",
         call
-      );
-      const reservation = yield* decodeProviderEntity(
-        DotyposReservationSchema,
-        { ...reservationResult, id: reservationId },
-        call
+      ).pipe(
+        Effect.flatMap((id) =>
+          decodeProviderEntity(
+            DotyposReservationSchema,
+            { ...reservationResult, id },
+            call
+          )
+        ),
+        Effect.mapError((error) =>
+          input.singleAttempt ? incompleteCreation() : error
+        )
       );
 
       yield* Effect.annotateLogsScoped({ reservation });
@@ -1403,6 +1537,7 @@ const makeDotyposService: Effect.Effect<
     (
       reservationId: DotyposReservationId,
       operation:
+        | "setReservationStatusIfMatches"
         | "confirmReservation"
         | "restoreCancelledReservation"
         | "updateReservation"
@@ -1444,6 +1579,7 @@ const makeDotyposService: Effect.Effect<
       readonly etag: string;
       readonly payload: UpdateReservationRequest;
       readonly operation:
+        | "setReservationStatusIfMatches"
         | "confirmReservation"
         | "restoreCancelledReservation"
         | "updateReservation";
@@ -1472,7 +1608,7 @@ const makeDotyposService: Effect.Effect<
   );
 
   /**
-   * Moves a reservation to CONFIRMED with one ETag read and an If-Match
+   * Changes a reservation's status with one ETag read and an If-Match
    * PATCH. `settle` judges the read reservation: it returns the result, fails,
    * or asks for the PATCH with none. On the settling rerun it also gets the
    * uncertainty of the replayed PATCH, which may have landed.
@@ -1487,9 +1623,13 @@ const makeDotyposService: Effect.Effect<
    * another one. Any failure of the rerun stays uncertain. A plain 412 stays
    * a version conflict and is not rerun.
    */
-  const confirmReservationVersion = <A, E extends DotyposFailure>(input: {
+  const transitionReservationVersion = <A, E extends DotyposFailure>(input: {
     readonly reservationId: DotyposReservationId;
-    readonly operation: "confirmReservation" | "restoreCancelledReservation";
+    readonly operation:
+      | "setReservationStatusIfMatches"
+      | "confirmReservation"
+      | "restoreCancelledReservation";
+    readonly status: "CANCELLED" | "CONFIRMED";
     readonly settle: (
       reservation: DotyposReservation,
       replayed: Option.Option<DotyposUncertain>
@@ -1533,7 +1673,7 @@ const makeDotyposService: Effect.Effect<
         return yield* patchReservationVersion({
           reservationId: input.reservationId,
           etag: current.etag,
-          payload: { status: "CONFIRMED" },
+          payload: { status: input.status },
           operation: input.operation,
         }).pipe(
           Effect.map(input.patched),
@@ -1550,7 +1690,7 @@ const makeDotyposService: Effect.Effect<
                 ).pipe(
                   Effect.andThen(
                     Effect.logWarning(
-                      "Dotypos reservation confirmation replay conflicted; rereading to settle it"
+                      "Dotypos reservation status replay conflicted; rereading to settle it"
                     )
                   )
                 )
@@ -1580,9 +1720,10 @@ const makeDotyposService: Effect.Effect<
 
       // CONFIRMED means a replay landed, CANCELLED keeps the cancellation, so
       // a cancelled hold is never revived, and NEW patches.
-      const reservation = yield* confirmReservationVersion({
+      const reservation = yield* transitionReservationVersion({
         reservationId: id,
         operation: "confirmReservation",
+        status: "CONFIRMED",
         settle: (current) =>
           Match.value(current.status).pipe(
             Match.when("CANCELLED", () =>
@@ -1636,9 +1777,10 @@ const makeDotyposService: Effect.Effect<
       // Only the expected booking is revived. CANCELLED patches. CONFIRMED is
       // an earlier restore, or, on the settling rerun, the replayed PATCH that
       // landed. NEW was never cancelled or was reopened outside Workspace.
-      const restored = yield* confirmReservationVersion({
+      const restored = yield* transitionReservationVersion({
         reservationId: id,
         operation: "restoreCancelledReservation",
+        status: "CONFIRMED",
         settle: (current, replayed) =>
           restorableReservationStatus(current, expectedBooking).pipe(
             // A refusal on the settling rerun can't show that nothing was
@@ -1677,6 +1819,53 @@ const makeDotyposService: Effect.Effect<
       });
 
       return restored;
+    },
+    (effect, input) =>
+      effect.pipe(Effect.annotateLogs({ reservationId: input.reservationId }))
+  );
+
+  const setReservationStatusIfMatches = Effect.fn(
+    "DotyposService.setReservationStatusIfMatches"
+  )(
+    function* (input: SetMatchingDotyposReservationStatusInput) {
+      const operation = "setReservationStatusIfMatches";
+      const id = yield* normalizeInputIdentifier(
+        DotyposReservationIdSchema,
+        input.reservationId,
+        "Reservation ID",
+        operation
+      );
+      const booking = yield* normalizeReservationBooking(
+        input.expectedBooking,
+        operation
+      );
+      const updated = yield* transitionReservationVersion({
+        reservationId: id,
+        operation,
+        status: input.status,
+        settle: (record, replayed) =>
+          verifyReservationStatusTransition(record, booking, {
+            ...input,
+            reservationId: id,
+          }).pipe(
+            Effect.mapError((conflict) =>
+              Option.getOrElse(
+                replayed,
+                (): DotyposConditionalWriteFailure => conflict
+              )
+            )
+          ),
+        patched: identity,
+      });
+      if (updated.id !== id || updated.status !== input.status) {
+        return yield* new DotyposUncertain({
+          operation,
+          request: "reservation.patch",
+          reason: "invalid-response",
+          message: "Dotypos did not confirm the reservation status change.",
+        });
+      }
+      return updated;
     },
     (effect, input) =>
       effect.pipe(Effect.annotateLogs({ reservationId: input.reservationId }))
@@ -2877,6 +3066,7 @@ const makeDotyposService: Effect.Effect<
     createReservation,
     updateReservation,
     cancelReservation,
+    setReservationStatusIfMatches,
     confirmReservation,
     restoreCancelledReservation,
     getReservation,

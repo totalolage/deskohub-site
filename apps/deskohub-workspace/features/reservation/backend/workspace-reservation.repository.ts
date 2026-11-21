@@ -34,6 +34,7 @@ import {
   customerEvents,
   fioPaymentSettlements,
   latePaymentRecoveries,
+  orders,
   type PaymentAttemptRow,
   passEntryClaims,
   passPurchases,
@@ -41,6 +42,7 @@ import {
   type ReservationCancellationCause,
   reservationAccessGrants,
   reservationPaymentWindows,
+  unlimitedPassDayMoves,
   type WorkspaceReservationRow,
   workspaceReservations,
 } from "@/db/schema";
@@ -70,6 +72,7 @@ import {
   reserveEntryPackClaim,
   reserveReleasedEntryPackClaim,
 } from "@/features/passes/backend/entry-pack-redemption";
+import { movablePassDay } from "@/features/passes/backend/movable-pass-day";
 import {
   recordAmbiguousPassDayHolds,
   type UnboundPassDayHold,
@@ -263,6 +266,8 @@ export type PendingPassDayCapacity = {
   readonly holdAmbiguous: boolean;
   readonly holdGeneration: string | null;
   readonly providerReservationId: DotyposReservationId | null;
+  readonly movableReservationId?: WorkspaceReservationId;
+  readonly moveClaim?: true;
 };
 
 export interface IWorkspaceReservationRepository {
@@ -2311,7 +2316,29 @@ export class WorkspaceReservationRepository extends Context.Service<
         selectPendingPassDayCapacity: Effect.fn(
           "workspaceReservations.selectPendingPassDayCapacity"
         )(function* ({ first, last }) {
-          const rows = yield* db
+          const dateRange = and(
+            gte(
+              workspaceReservations.serviceDate,
+              plainDateStringSchema.make(first.toString())
+            ),
+            lte(
+              workspaceReservations.serviceDate,
+              plainDateStringSchema.make(last.toString())
+            )
+          );
+          const pendingMove = db
+            .select({ id: unlimitedPassDayMoves.generation })
+            .from(unlimitedPassDayMoves)
+            .where(
+              and(
+                eq(
+                  unlimitedPassDayMoves.reservationId,
+                  workspaceReservations.id
+                ),
+                isNull(unlimitedPassDayMoves.settledAt)
+              )
+            );
+          const passDays = db
             .select({
               passId: passPurchases.id,
               serviceDate: workspaceReservations.serviceDate,
@@ -2319,15 +2346,25 @@ export class WorkspaceReservationRepository extends Context.Service<
               customerId: workspaceReservations.dotyposCustomerId,
               tier: passPurchases.tier,
               holdRequestedAt: workspaceReservations.passDayHoldRequestedAt,
-              holdAmbiguous: sql<boolean>`${workspaceReservations.failureCode} is not distinct from ${ambiguousPassDayHoldCode}`,
+              holdAmbiguous:
+                sql<boolean>`${workspaceReservations.failureCode} is not distinct from ${ambiguousPassDayHoldCode}`.as(
+                  "hold_ambiguous"
+                ),
               holdGeneration: workspaceReservations.passDayHoldGeneration,
               providerReservationId: workspaceReservations.dotyposReservationId,
+              movableReservationId: sql<WorkspaceReservationId | null>`case when
+                ${movablePassDay} and not exists (${pendingMove})
+                then ${workspaceReservations.id} end`.as(
+                "movable_reservation_id"
+              ),
+              moveClaim: sql<boolean>`false`.as("move_claim"),
             })
             .from(workspaceReservations)
             .innerJoin(
               passPurchases,
               eq(passPurchases.id, workspaceReservations.passId)
             )
+            .innerJoin(orders, eq(orders.id, passPurchases.id))
             .where(
               and(
                 inArray(workspaceReservations.reservationState, [
@@ -2338,19 +2375,74 @@ export class WorkspaceReservationRepository extends Context.Service<
                   "cancelling",
                   "cancellation_failed",
                 ]),
-                gte(
-                  workspaceReservations.serviceDate,
-                  plainDateStringSchema.make(first.toString())
-                ),
-                lte(
-                  workspaceReservations.serviceDate,
-                  plainDateStringSchema.make(last.toString())
-                )
+                dateRange
               )
             );
+          // Before attachment the destination is reserved. After attachment,
+          // the old hold still owns capacity until its release is settled.
+          const { attachedAt } = unlimitedPassDayMoves;
+          const moveClaims = db
+            .select({
+              passId: passPurchases.id,
+              serviceDate: workspaceReservations.serviceDate,
+              tableId:
+                sql<DotyposTableId | null>`case when ${attachedAt} is null
+                then ${unlimitedPassDayMoves.targetTableId} else ${unlimitedPassDayMoves.sourceTableId} end`.as(
+                  "pass_day_table_id"
+                ),
+              customerId: unlimitedPassDayMoves.customerId,
+              tier: passPurchases.tier,
+              holdRequestedAt: unlimitedPassDayMoves.requestedAt,
+              holdAmbiguous:
+                sql<boolean>`${unlimitedPassDayMoves.ambiguousAt} is not null`.as(
+                  "hold_ambiguous"
+                ),
+              holdGeneration: sql<string | null>`case when ${attachedAt} is null
+                then ${unlimitedPassDayMoves.generation} else ${unlimitedPassDayMoves.sourceGeneration} end`.as(
+                "pass_day_hold_generation"
+              ),
+              providerReservationId:
+                sql<DotyposReservationId | null>`case when ${attachedAt} is null
+                then ${unlimitedPassDayMoves.targetReservationId} else ${unlimitedPassDayMoves.sourceReservationId} end`.as(
+                  "dotypos_reservation_id"
+                ),
+              movableReservationId:
+                sql<WorkspaceReservationId | null>`null::text`.as(
+                  "movable_reservation_id"
+                ),
+              moveClaim: sql<boolean>`true`.as("move_claim"),
+            })
+            .from(unlimitedPassDayMoves)
+            .innerJoin(
+              workspaceReservations,
+              eq(workspaceReservations.id, unlimitedPassDayMoves.reservationId)
+            )
+            .innerJoin(
+              passPurchases,
+              eq(passPurchases.id, workspaceReservations.passId)
+            )
+            .where(and(dateRange, isNull(unlimitedPassDayMoves.settledAt)));
+          const rows = yield* passDays.unionAll(moveClaims);
 
-          return rows.flatMap(({ serviceDate, tableId, ...row }) =>
-            serviceDate && tableId ? [{ ...row, serviceDate, tableId }] : []
+          return rows.flatMap(
+            ({
+              serviceDate,
+              tableId,
+              movableReservationId,
+              moveClaim,
+              ...row
+            }) =>
+              serviceDate && tableId
+                ? [
+                    {
+                      ...row,
+                      serviceDate,
+                      tableId,
+                      ...(movableReservationId && { movableReservationId }),
+                      ...(moveClaim && { moveClaim: true as const }),
+                    },
+                  ]
+                : []
           );
         }),
         listForCustomer: Effect.fn("workspaceReservations.listForCustomer")(

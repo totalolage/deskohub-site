@@ -1,6 +1,13 @@
 import "@/shared/testing/workspace-test-env";
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 import { DotyposRejected, DotyposService } from "@deskohub/dotypos";
 import {
   AlgoPinSchema,
@@ -11,6 +18,7 @@ import { testEmailAddress } from "@deskohub/test-email";
 import { NodeCrypto } from "@effect/platform-node";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
+import { loadAccountUnlimitedPasses } from "@/features/account/account-unlimited-passes.server";
 import {
   CurrentCustomerAccount,
   requireVerifiedIdentity,
@@ -21,6 +29,7 @@ import {
   customerAccountIdSchema,
 } from "@/features/account/customer-account";
 import { type OrderId, orderIdSchema } from "@/features/order";
+import { AdvisoryAvailabilityInventory } from "@/features/reservation/backend/availability-inventory";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getCoworkReservationInterval } from "@/features/reservation/cowork-reservation";
 import { ReservationAccessService } from "@/features/reservation-access";
@@ -48,14 +57,19 @@ const syntheticPin = AlgoPinSchema.make("246813579");
 describe.skipIf(!process.env.WORKSPACE_TEST_DATABASE_URL)(
   "Unlimited access on disposable Postgres",
   () => {
-    const buyer = customerAccountIdSchema.make(crypto.randomUUID());
-    const holder = customerAccountIdSchema.make(crypto.randomUUID());
+    let buyer: CustomerAccountId;
+    let holder: CustomerAccountId;
     let database: WorkspacePostgresSuiteDatabase;
 
     beforeAll(async () => {
       database = (await createWorkspacePostgresSuiteDatabase(
         "unlimited_access"
       ))!;
+    });
+
+    beforeEach(async () => {
+      buyer = customerAccountIdSchema.make(crypto.randomUUID());
+      holder = customerAccountIdSchema.make(crypto.randomUUID());
       await database.pool.query(
         "insert into customer_accounts (id) values ($1), ($2)",
         [buyer, holder]
@@ -66,8 +80,8 @@ describe.skipIf(!process.env.WORKSPACE_TEST_DATABASE_URL)(
         [
           buyer,
           holder,
-          testEmailAddress("pass-buyer"),
-          testEmailAddress("pass-holder"),
+          testEmailAddress(`pass-buyer-${buyer}`),
+          testEmailAddress(`pass-holder-${holder}`),
         ]
       );
     });
@@ -76,7 +90,15 @@ describe.skipIf(!process.env.WORKSPACE_TEST_DATABASE_URL)(
       await database?.close();
     });
 
-    const seedPass = async (tier: PassTier, gifted = false) => {
+    const seedPass = async (
+      tier: PassTier,
+      gifted = false,
+      period: {
+        readonly start: string;
+        readonly end: string;
+        readonly renews?: OrderId;
+      } = { start: firstDay, end: "2030-04-30" }
+    ) => {
       const orderId = orderIdSchema.make(crypto.randomUUID());
       await database.pool.query(
         `insert into orders (id, kind, dotypos_customer_id, payment_state, fulfillment_state, paid_at)
@@ -85,15 +107,17 @@ describe.skipIf(!process.env.WORKSPACE_TEST_DATABASE_URL)(
       );
       await database.pool.query(
         `insert into pass_purchases (id, buyer_account_id, holder_account_id, product, tier, unlimited_coffee,
-           status, valid_from, valid_until, quote, locale, created_at)
-         values ($1, $2, $3, 'unlimited', $4, $5, 'active', $6, '2030-04-30', '{}', 'en-US', now())`,
+           status, valid_from, valid_until, renews_pass_id, quote, locale, created_at)
+         values ($1, $2, $3, 'unlimited', $4, $5, 'active', $6, $7, $8, '{}', 'en-US', now())`,
         [
           orderId,
           buyer,
           gifted ? holder : buyer,
           tier,
           tier === "open-space" ? false : null,
-          firstDay,
+          period.start,
+          period.end,
+          period.renews ?? null,
         ]
       );
       const { rows } = await database.pool.query<{ id: string }>(
@@ -103,7 +127,12 @@ describe.skipIf(!process.env.WORKSPACE_TEST_DATABASE_URL)(
          values (uuid_generate_v7(), $1, $3::date, '14', '1', $2, concat($1::text, ':', $3::text), 'confirmed', 'paid', 'fulfilled', now(), now(), '{}', 'en-US'),
                 (uuid_generate_v7(), $1, $4::date, '14', '1', $2, concat($1::text, ':', $4::text), 'confirmed', 'paid', 'fulfilled', now(), now(), '{}', 'en-US')
          returning id`,
-        [orderId, buyer, firstDay, nextDay]
+        [
+          orderId,
+          buyer,
+          period.start,
+          Temporal.PlainDate.from(period.start).add({ days: 1 }).toString(),
+        ]
       );
       return { orderId, dayIds: rows.map(({ id }) => id) };
     };
@@ -114,6 +143,7 @@ describe.skipIf(!process.env.WORKSPACE_TEST_DATABASE_URL)(
         pinId: ReturnType<typeof IgloohomePinIdSchema.make>;
       }>;
       readonly reads?: string[];
+      readonly onRead?: () => void;
       readonly readReservation?: DotyposService["Service"]["getReservationWithoutCustomer"];
       readonly intervalEndsEarly?: boolean;
       readonly isSignedIn?: () => boolean;
@@ -164,6 +194,7 @@ describe.skipIf(!process.env.WORKSPACE_TEST_DATABASE_URL)(
                     Effect.sync(() => {
                       const date = id.slice(-10);
                       provider.reads?.push(date);
+                      provider.onRead?.();
                       const { startsAt, endsAt } = getCoworkReservationInterval(
                         tier === "open-space" ? "open-space" : "reserved-desk",
                         date
@@ -227,6 +258,310 @@ describe.skipIf(!process.env.WORKSPACE_TEST_DATABASE_URL)(
         "update pass_purchases set holder_account_id = $2, gift_claimed_at = now() where id = $1",
         [orderId, holder]
       );
+
+    test("the original link follows the signed-in holder at the Prague renewal boundary", async () => {
+      const original = await seedPass("open-space", true, {
+        start: "2030-03-01",
+        end: firstDay,
+      });
+      const successor = await seedPass("open-space", true, {
+        start: firstDay,
+        end: "2030-04-30",
+        renews: original.orderId,
+      });
+      await reassignToHolder(original.orderId);
+      await reassignToHolder(successor.orderId);
+      const reads: string[] = [];
+      const provider = { issue, reads };
+
+      expect(
+        await load(
+          original.orderId,
+          "open-space",
+          holder,
+          Temporal.Instant.from("2030-03-30T22:59:59Z"),
+          provider
+        )
+      ).toMatchObject({ state: "closed", day: 30 });
+      expect(reads).toEqual([]);
+
+      expect(
+        await load(original.orderId, "open-space", buyer, during, provider)
+      ).toEqual({ state: "not-found" });
+      expect(reads).toEqual([]);
+
+      const accessCookie = await holderCookie(original.orderId, holder);
+      for (const viewer of [null, holder]) {
+        expect(
+          await load(original.orderId, "open-space", viewer, during, {
+            ...provider,
+            accessCookie,
+          })
+        ).toMatchObject({ state: "ended", validUntil: firstDay });
+      }
+      expect(reads).toEqual([]);
+
+      let signedIn = true;
+      let attemptedIssue = false;
+      expect(
+        await load(original.orderId, "open-space", holder, during, {
+          issue: () => {
+            attemptedIssue = true;
+            return issue();
+          },
+          isSignedIn: () => signedIn,
+          onRead: () => {
+            signedIn = false;
+          },
+        })
+      ).toEqual({ state: "not-found" });
+      expect(attemptedIssue).toBe(false);
+
+      expect(
+        await load(original.orderId, "open-space", holder, during, provider)
+      ).toMatchObject({ state: "available", day: 1, validFrom: firstDay });
+      expect(reads).toEqual([firstDay]);
+    });
+
+    test("the first URL reaches a later paid renewal without crossing an unpaid or reassigned period", async () => {
+      const original = await seedPass("open-space", false, {
+        start: "2030-01-30",
+        end: "2030-03-01",
+      });
+      const middle = await seedPass("open-space", false, {
+        start: "2030-03-01",
+        end: firstDay,
+        renews: original.orderId,
+      });
+      await seedPass("open-space", false, {
+        start: firstDay,
+        end: "2030-04-30",
+        renews: middle.orderId,
+      });
+
+      const reads: string[] = [];
+      const access = () =>
+        load(original.orderId, "open-space", buyer, during, { issue, reads });
+      expect(await access()).toMatchObject({ state: "available", day: 1 });
+      reads.length = 0;
+
+      await database.pool.query(
+        "update orders set payment_state = 'pending', paid_at = null where id = $1",
+        [middle.orderId]
+      );
+      expect(await access()).toMatchObject({ state: "ended" });
+      await database.pool.query(
+        "update orders set payment_state = 'paid', paid_at = now() where id = $1",
+        [middle.orderId]
+      );
+      await reassignToHolder(middle.orderId);
+      expect(await access()).toMatchObject({ state: "ended" });
+      expect(reads).toEqual([]);
+    });
+
+    test("a historical paid fork blocks access through its only current descendant", async () => {
+      const original = await seedPass("open-space", false, {
+        start: "2030-01-30",
+        end: "2030-03-01",
+      });
+      const period = {
+        start: "2030-03-01",
+        end: firstDay,
+        renews: original.orderId,
+      };
+      const middle = await seedPass("open-space", false, period);
+      const sibling = await seedPass("open-space", false, period);
+      await database.pool.query(
+        "update pass_purchases set status = 'expired' where id in ($1, $2)",
+        [middle.orderId, sibling.orderId]
+      );
+      await seedPass("open-space", false, {
+        start: firstDay,
+        end: "2030-04-30",
+        renews: middle.orderId,
+      });
+
+      const reads: string[] = [];
+      expect(
+        await load(original.orderId, "open-space", buyer, during, {
+          issue,
+          reads,
+        })
+      ).toMatchObject({ state: "ended", validUntil: "2030-03-01" });
+      expect(reads).toEqual([]);
+    });
+
+    test("withdrawal preserves the access cutoff and offers exactly the original term end to the holder", async () => {
+      const original = await seedPass("open-space", false, {
+        start: "2030-03-01",
+        end: firstDay,
+      });
+      await database.pool.query(
+        "update pass_purchases set status = 'withdrawn', access_ends_on = '2030-03-28' where id = $1",
+        [original.orderId]
+      );
+      const afterCutoff = Temporal.Instant.from("2030-03-28T11:00Z");
+      const accountPass = async () => {
+        const passes = await Effect.runPromise(
+          loadAccountUnlimitedPasses("en-US").pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                database.layer,
+                Layer.mock(AdvisoryAvailabilityInventory, {}),
+                Layer.mock(CurrentCustomerAccount, {
+                  peek: Effect.succeed({
+                    kind: "unlinked",
+                    reviewMarker: "absent",
+                    session: {
+                      ...testSessionProfile,
+                      accountId: buyer,
+                      deletionRequested: false,
+                      email: testEmailAddress("pass-viewer"),
+                    },
+                  }),
+                })
+              )
+            ),
+            atInstant(afterCutoff)
+          )
+        );
+        return passes.find((pass) => pass.orderId === original.orderId);
+      };
+      const renewalPath = `/en-US/passes/unlimited?renew=${original.orderId}`;
+      expect(await accountPass()).toMatchObject({ renewalPath });
+      const reads: string[] = [];
+      expect(
+        await load(original.orderId, "open-space", buyer, afterCutoff, {
+          issue,
+          reads,
+        })
+      ).toMatchObject({
+        state: "ended",
+        validUntil: "2030-03-28",
+        renewalOrderId: original.orderId,
+      });
+
+      const accessCookie = await holderCookie(original.orderId, buyer);
+      expect(
+        await load(original.orderId, "open-space", buyer, afterCutoff, {
+          issue,
+          accessCookie,
+        })
+      ).toMatchObject({ state: "ended", renewalOrderId: original.orderId });
+      const capabilityOnly = await load(
+        original.orderId,
+        "open-space",
+        null,
+        afterCutoff,
+        { issue, accessCookie }
+      );
+      expect(capabilityOnly).toMatchObject({ state: "ended" });
+      expect(capabilityOnly).not.toHaveProperty("renewalOrderId");
+
+      const independentlyBought = await seedPass("open-space", false, {
+        start: "2030-04-02",
+        end: "2030-05-02",
+      });
+      const overlapping = await load(
+        original.orderId,
+        "open-space",
+        buyer,
+        afterCutoff,
+        { issue }
+      );
+      expect(overlapping).not.toHaveProperty("renewalOrderId");
+      expect(await accountPass()).not.toHaveProperty("renewalPath");
+      await database.pool.query(
+        "update pass_purchases set status = 'withdrawn', access_ends_on = valid_from where id = $1",
+        [independentlyBought.orderId]
+      );
+      expect(
+        await load(original.orderId, "open-space", buyer, afterCutoff, {
+          issue,
+        })
+      ).toMatchObject({ state: "ended", renewalOrderId: original.orderId });
+      expect(await accountPass()).toMatchObject({ renewalPath });
+
+      const pending = await seedPass("open-space", false, {
+        start: firstDay,
+        end: "2030-04-30",
+        renews: original.orderId,
+      });
+      await database.pool.query(
+        "update pass_purchases set status = 'pending_payment' where id = $1",
+        [pending.orderId]
+      );
+      await database.pool.query(
+        "update orders set payment_state = 'pending', paid_at = null where id = $1",
+        [pending.orderId]
+      );
+      expect(
+        await load(original.orderId, "open-space", buyer, afterCutoff, {
+          issue,
+        })
+      ).toMatchObject({ state: "ended", renewalOrderId: original.orderId });
+
+      const afterOriginalEnd = Temporal.Instant.from("2030-04-01T11:00Z");
+      const lapsed = await load(
+        original.orderId,
+        "open-space",
+        buyer,
+        afterOriginalEnd,
+        { issue, reads }
+      );
+      expect(lapsed).toMatchObject({ state: "ended" });
+      expect(lapsed).not.toHaveProperty("renewalOrderId");
+      expect(reads).toEqual([]);
+    });
+
+    test("a renewal withdrawn before it starts does not mask a replacement on the same date", async () => {
+      const original = await seedPass("open-space", false, {
+        start: "2030-03-01",
+        end: firstDay,
+      });
+      const renewal = {
+        start: firstDay,
+        end: "2030-04-30",
+        renews: original.orderId,
+      };
+      const withdrawn = await seedPass("open-space", false, renewal);
+      await database.pool.query(
+        "update pass_purchases set status = 'withdrawn', access_ends_on = valid_from where id = $1",
+        [withdrawn.orderId]
+      );
+      const access = () =>
+        load(original.orderId, "open-space", buyer, during, { issue });
+      expect(await access()).toMatchObject({
+        state: "ended",
+        renewalOrderId: original.orderId,
+      });
+
+      const replacement = await seedPass("open-space", false, renewal);
+      expect(await access()).toMatchObject({ state: "available", day: 1 });
+      const { rows } = await database.pool.query<{
+        workspace_reservation_id: string;
+      }>(
+        "select workspace_reservation_id from reservation_access_grants where workspace_reservation_id = any($1::text[])",
+        [[withdrawn.dayIds[0], replacement.dayIds[0]]]
+      );
+      expect(rows).toEqual([
+        { workspace_reservation_id: replacement.dayIds[0] },
+      ]);
+
+      // An inconsistent duplicate with two live passes cannot select a code.
+      await database.pool.query(
+        "update pass_purchases set status = 'active', access_ends_on = null where id = $1",
+        [withdrawn.orderId]
+      );
+      const reads: string[] = [];
+      expect(
+        await load(original.orderId, "open-space", buyer, during, {
+          issue,
+          reads,
+        })
+      ).toMatchObject({ state: "ended" });
+      expect(reads).toEqual([]);
+    });
 
     test("gates a gift to the claimed holder and never exposes a pass day as a reservation order", async () => {
       const {

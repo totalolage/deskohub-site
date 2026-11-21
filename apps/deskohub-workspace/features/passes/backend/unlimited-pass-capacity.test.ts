@@ -1,7 +1,7 @@
 import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import {
   DotyposCustomerIdSchema,
   type DotyposReservation,
@@ -200,6 +200,63 @@ test("Reserved Desk excludes a window with free seats every day but no common de
     _tag: "UnlimitedPassCapacityUnavailable",
     reason: "no-common-desk",
   });
+});
+
+test.each([
+  [
+    "keeps the prior Reserved Desk for all 30 renewal days when it is free",
+    [],
+    otherDesk,
+  ],
+  [
+    "uses one fallback Reserved Desk for all 30 renewal days when the prior desk is busy on the last day",
+    [providerBooking("14", otherDesk, startDate.add({ days: 29 }))],
+    firstDesk,
+  ],
+] as const)("%s", async (_name, providerBookings, expectedDesk) => {
+  const { services } = capacityLayer({
+    tables: [firstDesk, otherDesk],
+    providerBookings,
+  });
+  const plan = await withUnlimitedPassCapacity(
+    {
+      startDate,
+      selection: { tier: "reserved-desk" },
+      preferredDeskId: otherDesk.id,
+    },
+    Effect.succeed
+  ).pipe(Effect.provide(services), Effect.runPromise);
+
+  expect(plan.pinnedDesk).toEqual({
+    id: expectedDesk.id,
+    name: expectedDesk.name,
+  });
+  expect(
+    plan.days.map(({ serviceDate, tableId }) => [String(serviceDate), tableId])
+  ).toEqual(
+    Array.from({ length: 30 }, (_, index) => [
+      String(startDate.add({ days: index })),
+      expectedDesk.id,
+    ])
+  );
+});
+
+test("the selected tier determines availability after the Open Space cutoff on a renewal date", async () => {
+  const clock = spyOn(Temporal.Now, "instant").mockReturnValue(
+    Temporal.Instant.from("2027-03-28T15:00:00Z")
+  );
+  try {
+    const startDate = Temporal.PlainDate.from("2027-03-28");
+    const { services } = capacityLayer({ tables: [openTable, firstDesk] });
+    const matrix = await getBookableUnlimitedStartMatrix({
+      startsOn: startDate,
+      endsBefore: startDate.add({ days: 1 }),
+    }).pipe(Effect.provide(services), Effect.runPromise);
+    expect(matrix["open-space"]).toEqual([]);
+    expect(matrix["reserved-desk"].map(String)).toEqual([startDate.toString()]);
+  } finally {
+    clock.mockRestore();
+  }
 });
 
 test("the workstation pins an exact monitor setup", async () => {

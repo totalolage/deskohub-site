@@ -211,6 +211,20 @@ describe("ReservationHistory", () => {
     });
     expect(cardDoorCodeLink.getAttribute("href")).toBe(pass.accessPath);
     expect(cardDoorCodeLink.hasAttribute("data-client-navigation")).toBe(false);
+    expect(view.queryByRole("link", { name: "Renew pass" })).toBeNull();
+
+    const renewalPath = `/en-US/passes/unlimited?renew=${pass.orderId}`;
+    view.rerender(
+      <UnsavedChangesProvider>
+        <AccountUnlimitedPassCard
+          locale="en-US"
+          pass={{ ...pass, renewalPath }}
+        />
+      </UnsavedChangesProvider>
+    );
+    expect(
+      view.getByRole("link", { name: "Renew pass" }).getAttribute("href")
+    ).toBe(renewalPath);
   });
 
   test("keeps ordinary history visible when the Unlimited lookup fails", () => {

@@ -58,6 +58,7 @@ export function UnlimitedPassChoose({
   calendarMonth,
   numberOfMonths,
   startDate,
+  fixedStartDate,
   availability,
   onOptionsChange,
   onMonthChange,
@@ -72,6 +73,7 @@ export function UnlimitedPassChoose({
   readonly calendarMonth: PlainDate;
   readonly numberOfMonths: 1 | 2;
   readonly startDate?: PlainDate;
+  readonly fixedStartDate?: PlainDate;
   readonly availability: UnlimitedPassAvailability;
   readonly onOptionsChange: (
     options: UnlimitedPassOptions,
@@ -90,10 +92,15 @@ export function UnlimitedPassChoose({
   const starts =
     availability.status === "ready" ? availability.starts : undefined;
   const enabled = new Set(
-    starts ? availableUnlimitedPassStarts(starts, options) : []
+    starts
+      ? availableUnlimitedPassStarts(starts, options).filter(
+          (date) => fixedStartDate === undefined || date === fixedStartDate
+        )
+      : []
   );
   const selected =
     startDate !== undefined && enabled.has(startDate) ? startDate : undefined;
+  const calendarSelection = fixedStartDate ?? selected;
   const changeOptions = (next: UnlimitedPassOptions) => {
     const date =
       startDate !== undefined &&
@@ -170,14 +177,15 @@ export function UnlimitedPassChoose({
               startMonth={toCalendarDate(firstDay)}
               endMonth={toCalendarDate(lastDay)}
               month={toCalendarDate(Temporal.PlainDate.from(calendarMonth))}
+              disableNavigation={fixedStartDate !== undefined}
               onMonthChange={(date) =>
                 onMonthChange(
                   plainDateStringSchema.make(fromCalendarDate(date).toString())
                 )
               }
               selected={
-                selected
-                  ? toCalendarDate(Temporal.PlainDate.from(selected))
+                calendarSelection
+                  ? toCalendarDate(Temporal.PlainDate.from(calendarSelection))
                   : undefined
               }
               disabled={(date) =>
@@ -197,15 +205,16 @@ export function UnlimitedPassChoose({
                 available:
                   "[&:not([data-selected])>button]:bg-aquamarine-green/25 [&:not([data-selected])>button]:hover:bg-aquamarine-green/50",
               }}
-              onSelect={(date) =>
+              onSelect={(date) => {
+                if (fixedStartDate) return;
                 onStartDateChange(
                   date
                     ? plainDateStringSchema.make(
                         fromCalendarDate(date).toString()
                       )
                     : undefined
-                )
-              }
+                );
+              }}
             />
             <p role="status" className="text-sm text-navy-blue/75">
               {availability.status === "loading" &&

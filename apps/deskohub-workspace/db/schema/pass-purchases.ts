@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -44,6 +45,7 @@ export const passPurchases = pgTable(
       .notNull()
       .$type<CustomerAccountId>()
       .references(() => customerAccounts.id),
+    renewsPassId: text("renews_pass_id").$type<OrderId>(),
     product: text("product").notNull().$type<"entry-pack" | "unlimited">(),
     tier: text("tier").notNull().$type<PassTier>(),
     entryCount: integer("entry_count").$type<EntryPackSize>(),
@@ -72,6 +74,16 @@ export const passPurchases = pgTable(
     giftClaimedAt: instant("gift_claimed_at"),
   },
   (t) => [
+    foreignKey({
+      columns: [t.renewsPassId],
+      foreignColumns: [t.id],
+      name: "pass_purchases_renews_pass_id_fk",
+    }),
+    check(
+      "pass_purchases_renewal_check",
+      sql`${t.renewsPassId} is null or (${t.product} = 'unlimited'
+        and ${t.renewsPassId} <> ${t.id})`
+    ),
     check(
       "pass_purchases_product_check",
       sql`(${t.product} = 'entry-pack' and ${t.entryCount} is not null
@@ -105,5 +117,6 @@ export const passPurchases = pgTable(
     ),
     index("pass_purchases_buyer_idx").on(t.buyerAccountId),
     index("pass_purchases_holder_idx").on(t.holderAccountId),
+    index("pass_purchases_renews_pass_idx").on(t.renewsPassId),
   ]
 );

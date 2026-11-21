@@ -9,10 +9,16 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Match, Option } from "effect";
 import { workspaceStatementConcurrency } from "@/db/database.service";
 import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
+import { CoworkPassesReleaseGate } from "@/features/passes/backend/cowork-passes-release-gate";
 import {
   getBookingsWithPassDayIntents,
   observePassDayInventory,
 } from "@/features/passes/backend/pass-day-capacity-bookings";
+import {
+  findMovablePassDays,
+  planPassDayMove,
+} from "@/features/passes/backend/pass-day-move-plan";
+import { PassDayMoves } from "@/features/passes/backend/unlimited-pass-day-moves";
 import { decodeBookedReservation } from "@/features/reservation/backend/booked-reservation";
 import type { ReservationRecord } from "@/features/reservation/backend/reservation-record";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -28,7 +34,10 @@ import {
   getOfficeReservationIntervalInput,
   type OfficeReservationDetails,
 } from "@/features/reservation/office-reservation";
-import { getTouchedWorkspaceDateBounds } from "@/features/reservation/reservation-date";
+import {
+  getTouchedWorkspaceDateBounds,
+  getWorkspaceDate,
+} from "@/features/reservation/reservation-date";
 import {
   getReservationDate,
   getReservationIntervalNormalization,
@@ -37,6 +46,7 @@ import {
 import { ReservationIntervalValidationError } from "@/features/reservation/reservation-interval-domain";
 import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { currentInstant } from "@/shared/utils/temporal";
 import {
   excludeDotyposReservationsById,
   getOccupancyWindow,
@@ -47,6 +57,7 @@ import {
   workspaceBookingSeatCount,
 } from "./workspace-table-occupancy";
 import {
+  decodeTableCandidates,
   getWorkspaceTableCandidatesByPredicate,
   getWorkspaceTableSeatCapacity,
   hasCandidateCapacity,
@@ -189,7 +200,8 @@ export class TableAssignmentUnavailableError extends Data.TaggedError(
 
 export interface IWorkspaceTableAssignmentService {
   readonly assignTableId: (
-    reservation: WorkspaceTableAssignmentReservation
+    reservation: WorkspaceTableAssignmentReservation,
+    options?: { readonly allowPassDayMove: true }
   ) => Effect.Effect<
     DotyposTableId,
     | DotyposReadFailure
@@ -224,6 +236,8 @@ export class WorkspaceTableAssignmentService extends Context.Service<
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;
       const workspaceReservations = yield* WorkspaceReservationRepository;
+      const moves = yield* Effect.serviceOption(PassDayMoves);
+      const passGate = yield* Effect.serviceOption(CoworkPassesReleaseGate);
 
       const loadInventory = Effect.fn(
         "WorkspaceTableAssignmentService.loadInventory"
@@ -275,100 +289,216 @@ export class WorkspaceTableAssignmentService extends Context.Service<
 
       const assignTableId = Effect.fn(
         "WorkspaceTableAssignmentService.assignTableId"
-      )((reservation: WorkspaceTableAssignmentReservation) =>
-        Effect.succeed({ reservation }).pipe(
-          Effect.let("assignment", ({ reservation }) =>
-            getReservationAssignment(reservation)
-          ),
-          Effect.let("seats", ({ reservation }) =>
-            getWorkspaceReservationSeats(reservation)
-          ),
-          Effect.tap(({ assignment }) =>
-            Effect.logInfo("Workspace table assignment started", {
-              requiredTags: assignment.requiredTags,
-            })
-          ),
-          Effect.bind("occupancyWindow", ({ reservation }) =>
-            Effect.map(
-              getWorkspaceOccupiedInterval(reservation),
-              getOccupancyWindow
-            )
-          ),
-          Effect.bind("inventory", ({ occupancyWindow }) =>
-            loadInventory(occupancyWindow)
-          ),
-          Effect.let("activeReservations", ({ inventory }) =>
-            excludeDotyposReservationsById(
-              inventory.reservations,
-              inventory.expiredDotyposReservationIds
-            )
-          ),
-          Effect.tap(({ inventory }) =>
-            Effect.logInfo("Workspace table assignment inventory loaded", {
-              reservationCount: inventory.reservations.length,
-              tableCount: inventory.tables.length,
-            })
-          ),
-          Effect.let(
-            "occupancyByTableId",
-            ({ activeReservations, occupancyWindow, inventory }) =>
-              getTableBookingOccupancyById(
-                getBookingsWithPassDayIntents(
-                  activeReservations,
-                  inventory.passDayIntents
-                ),
-                occupancyWindow
+      )(
+        (
+          reservation: WorkspaceTableAssignmentReservation,
+          options?: { readonly allowPassDayMove: true }
+        ) =>
+          Effect.succeed({ reservation }).pipe(
+            Effect.let("assignment", ({ reservation }) =>
+              getReservationAssignment(reservation)
+            ),
+            Effect.let("seats", ({ reservation }) =>
+              getWorkspaceReservationSeats(reservation)
+            ),
+            Effect.tap(({ assignment }) =>
+              Effect.logInfo("Workspace table assignment started", {
+                requiredTags: assignment.requiredTags,
+              })
+            ),
+            Effect.bind("occupancyWindow", ({ reservation }) =>
+              Effect.map(
+                getWorkspaceOccupiedInterval(reservation),
+                getOccupancyWindow
               )
-          ),
-          Effect.bind(
-            "rankingOccupancyByTableId",
-            ({ assignment, inventory, occupancyByTableId }) =>
-              assignment.scoreCoworkOpenSpaceCapacity
-                ? getReservedDeskScoringOccupancyById(
-                    inventory.tables,
-                    occupancyByTableId
-                  )
-                : Effect.succeed(occupancyByTableId)
-          ),
-          Effect.tap(({ occupancyByTableId }) =>
-            Effect.logDebug("Workspace table occupancy calculated", {
-              occupancyByTableId: Object.fromEntries(occupancyByTableId),
-            })
-          ),
-          Effect.let("matchingTables", ({ assignment, inventory }) =>
-            getWorkspaceTableCandidatesByPredicate(
-              inventory.tables,
-              assignment.isCandidateTable
-            )
-          ),
-          Effect.bind(
-            "matchingTable",
-            ({
-              seats,
-              inventory,
-              matchingTables,
-              occupancyByTableId,
-              rankingOccupancyByTableId,
-            }) =>
-              selectWorkspaceTableFromCandidates(
-                matchingTables,
+            ),
+            Effect.bind("inventory", ({ occupancyWindow }) =>
+              loadInventory(occupancyWindow)
+            ),
+            Effect.let("activeReservations", ({ inventory }) =>
+              excludeDotyposReservationsById(
+                inventory.reservations,
+                inventory.expiredDotyposReservationIds
+              )
+            ),
+            Effect.tap(({ inventory }) =>
+              Effect.logInfo("Workspace table assignment inventory loaded", {
+                reservationCount: inventory.reservations.length,
+                tableCount: inventory.tables.length,
+              })
+            ),
+            Effect.let(
+              "occupancyByTableId",
+              ({ activeReservations, occupancyWindow, inventory }) =>
+                getTableBookingOccupancyById(
+                  getBookingsWithPassDayIntents(
+                    activeReservations,
+                    inventory.passDayIntents
+                  ),
+                  occupancyWindow
+                )
+            ),
+            Effect.bind(
+              "rankingOccupancyByTableId",
+              ({ assignment, inventory, occupancyByTableId }) =>
+                assignment.scoreCoworkOpenSpaceCapacity
+                  ? getReservedDeskScoringOccupancyById(
+                      inventory.tables,
+                      occupancyByTableId
+                    )
+                  : Effect.succeed(occupancyByTableId)
+            ),
+            Effect.tap(({ occupancyByTableId }) =>
+              Effect.logDebug("Workspace table occupancy calculated", {
+                occupancyByTableId: Object.fromEntries(occupancyByTableId),
+              })
+            ),
+            Effect.let("matchingTables", ({ assignment, inventory }) =>
+              getWorkspaceTableCandidatesByPredicate(
                 inventory.tables,
-                occupancyByTableId,
-                seats,
-                requiresEmptyTable(reservation.kind),
-                rankingOccupancyByTableId
+                assignment.isCandidateTable
               )
-          ),
-          Effect.bind("matchingTableId", validateTableAssignment),
-          Effect.tap(({ matchingTableId }) =>
-            Effect.logDebug("Workspace table assigned", {
-              matchingTableId,
-            })
-          ),
-          Effect.map(({ matchingTableId }) => matchingTableId),
-          Effect.scoped,
-          Effect.annotateLogs(getReservationLogAnnotations(reservation))
-        )
+            ),
+            Effect.bind(
+              "matchingTable",
+              ({
+                seats,
+                inventory,
+                matchingTables,
+                occupancyByTableId,
+                rankingOccupancyByTableId,
+              }) =>
+                selectWorkspaceTableFromCandidates(
+                  matchingTables,
+                  inventory.tables,
+                  occupancyByTableId,
+                  seats,
+                  requiresEmptyTable(reservation.kind),
+                  rankingOccupancyByTableId
+                )
+            ),
+            Effect.bind(
+              "availableTable",
+              Effect.fnUntraced(function* ({
+                assignment,
+                matchingTable,
+                matchingTables,
+                inventory,
+                occupancyWindow,
+                seats,
+              }) {
+                if (
+                  matchingTable ||
+                  matchingTables.length === 0 ||
+                  !options?.allowPassDayMove ||
+                  Option.isNone(moves) ||
+                  Option.isNone(passGate) ||
+                  !inventory.passDayIntents.some(
+                    ({ movableReservationId }) => movableReservationId
+                  ) ||
+                  !(yield* passGate.value.isOpen)
+                )
+                  return matchingTable;
+                const { first, last } = getTouchedWorkspaceDateBounds({
+                  startsAt: Temporal.Instant.fromEpochMilliseconds(
+                    occupancyWindow.startsAt
+                  ),
+                  endsAt: Temporal.Instant.fromEpochMilliseconds(
+                    occupancyWindow.endsAt
+                  ),
+                });
+                // The replacement needs room for the whole pass day, even when
+                // the ordinary booking touches only part of that day.
+                const full = yield* loadInventory({
+                  startsAt: getOccupancyWindow(first).startsAt,
+                  endsAt: getOccupancyWindow(last).endsAt,
+                });
+                const active = excludeDotyposReservationsById(
+                  full.reservations,
+                  full.expiredDotyposReservationIds
+                );
+                const bookings = getBookingsWithPassDayIntents(
+                  active,
+                  full.passDayIntents
+                );
+                const candidates = yield* Effect.fromResult(
+                  decodeTableCandidates(
+                    getWorkspaceTableCandidatesByPredicate(
+                      full.tables,
+                      assignment.isCandidateTable
+                    )
+                  )
+                );
+                const move = planPassDayMove({
+                  sources: findMovablePassDays(
+                    active,
+                    full.passDayIntents,
+                    getWorkspaceDate(yield* currentInstant)
+                  ),
+                  bookings,
+                  tables: full.tables,
+                  candidates,
+                  window: occupancyWindow,
+                  occupancy: getTableBookingOccupancyById(
+                    bookings,
+                    occupancyWindow
+                  ),
+                  seats,
+                  requireEmpty: requiresEmptyTable(reservation.kind),
+                });
+                if (
+                  !move ||
+                  !(yield* moves.value
+                    .move(move)
+                    .pipe(
+                      Effect.catch(() =>
+                        Effect.logWarning(
+                          "Unlimited pass day move was not completed"
+                        ).pipe(Effect.as(false))
+                      )
+                    ))
+                )
+                  return undefined;
+                // Recheck before allocating. Dotypos can reopen the old
+                // reservation independently of the Workspace capacity lock.
+                const refreshed = yield* loadInventory(occupancyWindow);
+                const remaining = excludeDotyposReservationsById(
+                  refreshed.reservations,
+                  refreshed.expiredDotyposReservationIds
+                );
+                return yield* selectWorkspaceTableFromCandidates(
+                  getWorkspaceTableCandidatesByPredicate(
+                    refreshed.tables,
+                    assignment.isCandidateTable
+                  ),
+                  refreshed.tables,
+                  getTableBookingOccupancyById(
+                    getBookingsWithPassDayIntents(
+                      remaining,
+                      refreshed.passDayIntents
+                    ),
+                    occupancyWindow
+                  ),
+                  seats,
+                  requiresEmptyTable(reservation.kind)
+                );
+              })
+            ),
+            Effect.bind("matchingTableId", ({ availableTable, ...state }) =>
+              validateTableAssignment({
+                ...state,
+                matchingTable: availableTable,
+              })
+            ),
+            Effect.tap(({ matchingTableId }) =>
+              Effect.logDebug("Workspace table assigned", {
+                matchingTableId,
+              })
+            ),
+            Effect.map(({ matchingTableId }) => matchingTableId),
+            Effect.scoped,
+            Effect.annotateLogs(getReservationLogAnnotations(reservation))
+          )
       );
 
       const getAssignedTableAvailability = Effect.fn(

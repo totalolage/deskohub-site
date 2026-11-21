@@ -1369,7 +1369,8 @@ describe("prepareWorkspacePayState", () => {
     const { startsAt, endsAt } = scenario.meetingRoomReservation;
 
     expect(scenario.ensureAvailable).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "meeting-room", startsAt, endsAt })
+      expect.objectContaining({ kind: "meeting-room", startsAt, endsAt }),
+      { allowPassDayMove: true }
     );
     expect(scenario.createDraft).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1391,7 +1392,8 @@ describe("prepareWorkspacePayState", () => {
         kind: "meeting-room",
         startsAt,
         endsAt,
-      })
+      }),
+      { allowPassDayMove: true }
     );
     expect(scenario.createReservation).toHaveBeenCalledWith(
       expect.objectContaining({

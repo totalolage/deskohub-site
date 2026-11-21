@@ -106,10 +106,12 @@ export function getUnlimitedPassChoosePath(
   locale: Locale,
   options: UnlimitedPassOptions,
   startDate?: PlainDate,
-  order?: UnlimitedPassOrderLink
+  order?: UnlimitedPassOrderLink,
+  renewsPassId?: OrderId
 ) {
   const query = new URLSearchParams({
     tier: options.tier,
+    ...(renewsPassId && { renew: renewsPassId }),
     ...(startDate !== undefined && { startDate }),
     ...(order?.kind === "resume" && { order: order.orderId }),
     ...(order?.kind === "replace" && { supersedeOrder: order.orderId }),
@@ -130,13 +132,15 @@ export function getUnlimitedPassChoosePath(
 export function getUnlimitedPassDetailsPath(
   locale: Locale,
   selection: UnlimitedPassSelection,
-  order?: UnlimitedPassOrderLink
+  order?: UnlimitedPassOrderLink,
+  renewsPassId?: OrderId
 ) {
   const path = getUnlimitedPassChoosePath(
     locale,
     selection,
     selection.startDate,
-    order
+    order,
+    renewsPassId
   );
   return `${path}&step=details`;
 }

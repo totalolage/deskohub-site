@@ -15,6 +15,7 @@ import {
   Schedule,
   Schema,
 } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import type { CustomerAgentClientId } from "@/features/account";
 import type { CustomerAccountId } from "@/features/account/customer-account";
@@ -47,11 +48,13 @@ import {
 } from "@/features/checkout/schemas/checkout-details";
 import type { Locale } from "@/features/i18n";
 import type { ValidOfficePeople } from "@/features/office/office-people";
+import { CoworkPassesReleaseGateForRun } from "@/features/passes/backend/cowork-passes-release-gate";
 import {
   type EntryPackRedemption,
   EntryPackUnavailableError,
   entryPackUnavailableFailureCode,
 } from "@/features/passes/backend/entry-pack-redemption";
+import { PassDayMoves } from "@/features/passes/backend/unlimited-pass-day-moves";
 import type { PreparePayStateInput } from "@/features/reservation/actions/prepare-pay-state.schema";
 import {
   AgentBookingPaymentInProgressError,
@@ -219,7 +222,11 @@ export class ReservationHolds extends Context.Service<
         WorkspaceReservationRepository.Live,
         WorkspaceAvailabilityService.Live,
         WorkspaceTableAssignmentService.Default.pipe(
+          Layer.provide(CoworkPassesReleaseGateForRun),
+          Layer.provide(PassDayMoves.Default),
           Layer.provide(WorkspaceReservationRepository.Live),
+          Layer.provide(WorkspaceDatabase.Default),
+          Layer.provide(WorkspaceDatabaseAdvisoryLock.Default),
           Layer.provide(WorkspaceDotyposLayer)
         ),
         ReservationHoldCleanupScheduleService.Live,
@@ -451,6 +458,7 @@ const holdForAttempt = Effect.fn("ReservationHolds.holdForAttempt")(function* (
         checkoutDetails,
         reservation: checkoutDetails.reservation,
         status: "NEW",
+        allowPassDayMove: true,
       }).pipe(
         Effect.tapError(
           Effect.fn(function* (cause) {
@@ -858,7 +866,10 @@ const ensureEntryPackWorkstationRequired = Effect.fnUntraced(function* (
     reservation.monitorOption
   ) {
     const bareDeskAvailable = yield* availability
-      .ensureAvailable({ ...reservation, monitorOption: undefined })
+      .ensureAvailable(
+        { ...reservation, monitorOption: undefined },
+        { allowPassDayMove: true }
+      )
       .pipe(
         Effect.as(true),
         Effect.catchTag("WorkspaceTableUnavailableError", () =>
@@ -1028,36 +1039,38 @@ const supersedeSessionReservation = Effect.fnUntraced(function* (input: {
   }
 
   const cancelledAt = Temporal.Now.instant();
-  return yield* availability.ensureAvailable(request.reservation).pipe(
-    Effect.andThen(
-      reservations.completeSupersessionAndCreateDraft({
-        cancelledReservationId: claimed.id,
-        cancelledAt,
-        replacement: {
-          ...request.draft,
-          checkoutSessionKey: input.checkoutSessionKey,
-          checkoutAttemptKey: input.checkoutAttemptKey,
-        },
-      })
-    ),
-    Effect.map(
-      (reservationDraft) =>
-        ({
-          kind: "prepared",
-          checkoutSessionId,
-          reservationDraft,
-        }) satisfies ReservationDraftStep
-    ),
-    Effect.tapError(() =>
-      reservations
-        .markCancelled({
-          id: claimed.id,
-          claimedAt: claimed.updatedAt,
+  return yield* availability
+    .ensureAvailable(request.reservation, { allowPassDayMove: true })
+    .pipe(
+      Effect.andThen(
+        reservations.completeSupersessionAndCreateDraft({
+          cancelledReservationId: claimed.id,
           cancelledAt,
+          replacement: {
+            ...request.draft,
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+          },
         })
-        .pipe(Effect.ignore)
-    )
-  );
+      ),
+      Effect.map(
+        (reservationDraft) =>
+          ({
+            kind: "prepared",
+            checkoutSessionId,
+            reservationDraft,
+          }) satisfies ReservationDraftStep
+      ),
+      Effect.tapError(() =>
+        reservations
+          .markCancelled({
+            id: claimed.id,
+            claimedAt: claimed.updatedAt,
+            cancelledAt,
+          })
+          .pipe(Effect.ignore)
+      )
+    );
 });
 
 /**
@@ -1127,7 +1140,9 @@ const createSessionDraft = Effect.fnUntraced(function* (input: {
 }) {
   const { reservations, availability } = input.services;
   const { checkoutSessionId, checkoutAttemptKeys, request } = input;
-  yield* availability.ensureAvailable(request.reservation);
+  yield* availability.ensureAvailable(request.reservation, {
+    allowPassDayMove: true,
+  });
   const reservationDraft = yield* reservations.createDraft({
     ...request.draft,
     checkoutSessionKey: input.checkoutSessionKey,

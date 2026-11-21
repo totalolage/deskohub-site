@@ -1,8 +1,11 @@
 import { Schema } from "effect";
 import { workspaceProductMonitorOptions } from "@/features/checkout/product-catalog";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { getWorkspaceAvailabilityRange } from "@/features/reservation/workspace-availability";
 import { currencyCZK } from "@/shared/money/currencies";
 import { type Money, sameMoneyUnit } from "@/shared/money/money";
 import { type PlainDate, plainDateStringSchema } from "@/shared/utils/temporal";
+import type { PassStatus } from "./pass";
 import { unlimitedPassDays } from "./pass-offer";
 
 const periodFields = { startDate: plainDateStringSchema };
@@ -22,6 +25,28 @@ export const unlimitedPassSelectionSchema = Schema.Union([
 ]);
 
 export type UnlimitedPassSelection = typeof unlimitedPassSelectionSchema.Type;
+
+export function isUnlimitedPassRenewalEligible(
+  pass: { status: PassStatus; validUntil: PlainDate },
+  now: Temporal.Instant
+) {
+  if (
+    pass.status !== "active" &&
+    pass.status !== "expired" &&
+    pass.status !== "cancelled" &&
+    pass.status !== "withdrawn"
+  )
+    return false;
+
+  const today = getCurrentWorkspaceDate(now).toString();
+  return (
+    Temporal.PlainDate.compare(pass.validUntil, today) >= 0 &&
+    Temporal.PlainDate.compare(
+      pass.validUntil,
+      getWorkspaceAvailabilityRange(today).to
+    ) <= 0
+  );
+}
 
 export const getUnlimitedPassEndDate = (startDate: PlainDate): PlainDate =>
   plainDateStringSchema.make(

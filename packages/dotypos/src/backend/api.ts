@@ -68,6 +68,13 @@ interface IDotyposGeneratedClient {
   readonly client: DotyposClient;
 }
 
+/** Tracks token acquisition for a write that must distinguish a timeout from a sent request. */
+export const DotyposRequestDispatch = Context.Reference<
+  { waitingForToken: boolean; expiredBeforeDispatch: boolean } | undefined
+>("@deskohub/dotypos/DotyposRequestDispatch", {
+  defaultValue: () => undefined,
+});
+
 type GeneratedClientError = {
   readonly response: HttpClientResponse.HttpClientResponse;
   readonly cause: unknown;
@@ -141,17 +148,20 @@ export class DotyposGeneratedClient extends Context.Service<
       const httpClient = yield* HttpClient.HttpClient;
       const accessToken = yield* DotyposAccessToken;
       const authenticatedHttpClient = httpClient.pipe(
-        HttpClient.mapRequestInputEffect((request) =>
-          accessToken.get.pipe(
-            Effect.map((token) =>
-              request.pipe(
-                HttpClientRequest.prependUrl(config.apiUrl),
-                HttpClientRequest.setHeaders({
-                  Authorization: `Bearer ${token}`,
-                })
-              )
-            )
-          )
+        HttpClient.mapRequestInputEffect(
+          Effect.fnUntraced(function* (request) {
+            const dispatch = yield* DotyposRequestDispatch;
+            if (dispatch) dispatch.waitingForToken = true;
+            const token = yield* accessToken.get;
+            if (dispatch?.expiredBeforeDispatch) return yield* Effect.interrupt;
+            if (dispatch) dispatch.waitingForToken = false;
+            return request.pipe(
+              HttpClientRequest.prependUrl(config.apiUrl),
+              HttpClientRequest.setHeaders({
+                Authorization: `Bearer ${token}`,
+              })
+            );
+          })
         ),
         HttpClient.tap((response) =>
           Effect.when(

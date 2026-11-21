@@ -82,6 +82,7 @@ export type {
   DotyposTableGroupId,
   DotyposTableId,
   RestoreDotyposReservationInput,
+  SetMatchingDotyposReservationStatusInput,
   UpdateDotyposReservationInput,
 } from "./types";
 export {
