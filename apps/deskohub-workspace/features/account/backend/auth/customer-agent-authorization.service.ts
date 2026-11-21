@@ -39,6 +39,12 @@ export interface CustomerAgentCaller {
   readonly accessToken: string;
 }
 
+type CustomerAgentAuthorizationFailureCode =
+  | "authentication.agent-token.verification"
+  | "authentication.agent-token.claims-decode"
+  | "authentication.agent-token.account-lookup"
+  | "authentication.agent-token.account-session-decode";
+
 /**
  * Why a token grants nothing. `invalid-token` covers unknown, expired,
  * revoked, and foreign-audience tokens; `account-unavailable` a deleted,
@@ -49,6 +55,7 @@ export class CustomerAgentAuthorizationError extends Data.TaggedError(
   "CustomerAgentAuthorizationError"
 )<{
   readonly reason: "invalid-token" | "account-unavailable" | "unavailable";
+  readonly failureCode?: CustomerAgentAuthorizationFailureCode;
 }> {}
 
 /** The introspection claims of a validated token that the grant needs. */
@@ -94,8 +101,8 @@ const invalidToken = () =>
   new CustomerAgentAuthorizationError({ reason: "invalid-token" });
 const accountUnavailable = () =>
   new CustomerAgentAuthorizationError({ reason: "account-unavailable" });
-const unavailable = () =>
-  new CustomerAgentAuthorizationError({ reason: "unavailable" });
+const unavailable = (failureCode: CustomerAgentAuthorizationFailureCode) =>
+  new CustomerAgentAuthorizationError({ reason: "unavailable", failureCode });
 
 const audienceIncludes = (
   audience: string | ReadonlyArray<string> | undefined,
@@ -120,12 +127,15 @@ const authorizeSession = (authority: CustomerAgentAuthority) =>
     const claims = yield* Effect.tryPromise({
       try: () => authority.validateAccessToken(accessToken),
       catch: (cause) =>
-        isProviderRejection(cause) ? invalidToken() : unavailable(),
+        isProviderRejection(cause)
+          ? invalidToken()
+          : unavailable("authentication.agent-token.verification"),
     }).pipe(
       Effect.map(decodeClaims),
-      Effect.flatMap(Effect.fromOption),
-      Effect.mapError((error) =>
-        error instanceof CustomerAgentAuthorizationError ? error : unavailable()
+      Effect.flatMap(
+        Effect.fromOption(() =>
+          unavailable("authentication.agent-token.claims-decode")
+        )
       ),
       Effect.filterOrFail(
         (decoded) =>
@@ -143,13 +153,15 @@ const authorizeSession = (authority: CustomerAgentAuthority) =>
 
     const user = yield* Effect.tryPromise({
       try: () => authority.findUser(accountId),
-      catch: unavailable,
+      catch: () => unavailable("authentication.agent-token.account-lookup"),
     });
     const session = yield* decodeCustomerAccountSession(
       user ? { user } : null
     ).pipe(
       Effect.mapError((error) =>
-        error.reason === "unavailable" ? unavailable() : accountUnavailable()
+        error.reason === "unavailable"
+          ? unavailable("authentication.agent-token.account-session-decode")
+          : accountUnavailable()
       ),
       Effect.flatMap((decoded) =>
         decoded && decoded.accountId === accountId && !decoded.deletionRequested

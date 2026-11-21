@@ -14,6 +14,9 @@ import { WorkspaceDatabaseAdvisoryLock } from "@/db/postgres-advisory-lock";
 import type { AgentToolClient } from "@/features/agent-tools/agent-tool-client";
 import { m } from "@/features/i18n";
 import type { AgentTrafficEvent } from "@/shared/backend/agent-traffic/agent-traffic-events";
+import { captureWorkspaceLogs } from "@/shared/testing/workspace-telemetry.test-utils";
+
+const workspaceLogs = captureWorkspaceLogs();
 
 const agentTrafficEvents = await import(
   "@/shared/backend/agent-traffic/agent-traffic-events"
@@ -946,13 +949,24 @@ describe("customer MCP route for signed-in tools", () => {
     expect(memoryBudget.spends()).toEqual([]);
   });
 
-  test("fails the request while the authorization server is unreachable", async () => {
+  test("returns a generic 500 and logs a fixed code while the authorization server is unreachable", async () => {
+    workspaceLogs.reset();
     accessTokens.set("valid", "reservations:read");
     authorizationServerReachable = false;
 
     const response = await callToolAs("whoami", {}, bearer("valid"));
 
-    expect(response.status).toBeGreaterThanOrEqual(500);
+    expect(response.status).toBe(500);
+    expect(response.headers.get("www-authenticate")).toBeNull();
+    expect(await response.json()).toEqual({ error: "The MCP request failed." });
+    const logged = JSON.stringify(
+      workspaceLogs.records().map(({ body, attributes }) => ({
+        body,
+        attributes,
+      }))
+    );
+    expect(logged).toContain("authentication.agent-token.verification");
+    expect(logged).not.toContain("Authorization server is unreachable");
   });
 });
 

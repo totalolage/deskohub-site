@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { testEmailAddress } from "@deskohub/test-email";
 import type { User } from "better-auth";
 import { Effect, Option } from "effect";
+import { censorLogValue } from "@/shared/backend/logging/censorship";
 import type { CustomerAccountId } from "../../customer-account";
 import { CustomerAuthentication } from "../customer-authentication.service";
 import {
@@ -231,6 +232,7 @@ describe("CustomerAgentAuthorization.authorize", () => {
           throw new Error("connection reset");
         },
       }),
+      "authentication.agent-token.verification",
     ],
     [
       "the provider fails the token check",
@@ -239,10 +241,12 @@ describe("CustomerAgentAuthorization.authorize", () => {
           throw providerError(500);
         },
       }),
+      "authentication.agent-token.verification",
     ],
     [
       "the token check answers with no claims",
       authorityWith({ validateAccessToken: async () => null }),
+      "authentication.agent-token.claims-decode",
     ],
     [
       "the account read fails",
@@ -251,6 +255,7 @@ describe("CustomerAgentAuthorization.authorize", () => {
           throw new Error("connection reset");
         },
       }),
+      "authentication.agent-token.account-lookup",
     ],
     [
       "the account read fails with a provider error",
@@ -259,10 +264,31 @@ describe("CustomerAgentAuthorization.authorize", () => {
           throw providerRejection();
         },
       }),
+      "authentication.agent-token.account-lookup",
     ],
-  ] as const)("reports unavailable when %s", async (_name, authority) => {
-    expect(await failureReason(authority)).toBe("unavailable");
-  });
+    [
+      "the account session contains an invalid timestamp",
+      authorityWith({
+        findUser: async () => userRow({ createdAt: new Date(Number.NaN) }),
+      }),
+      "authentication.agent-token.account-session-decode",
+    ],
+  ] as const)(
+    "reports and logs an unavailable authorization when %s",
+    async (_name, authority, failureCode) => {
+      const outcome = await authorize(authority);
+      expect(outcome._tag).toBe("Failure");
+      if (outcome._tag !== "Failure") return;
+
+      expect(censorLogValue({ cause: outcome.failure })).toMatchObject({
+        cause: {
+          _tag: "CustomerAgentAuthorizationError",
+          reason: "unavailable",
+          failureCode,
+        },
+      });
+    }
+  );
 
   test("re-reads the account on every call", async () => {
     let deletionRequestedAt: Date | null = null;
