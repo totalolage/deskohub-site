@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.8](https://github.com/totalolage/deskohub-site/compare/mobile-v0.2.7...mobile-v0.2.8) (2026-11-28)
+
+### Features
+
+* **mobile:** book Team Tables by table size and 15-minute time slot, invite guests, and view Team Table reservations
+* **mobile:** offer Entry packs and Unlimited memberships at the end of Cowork booking and in Past reservations (hidden for active Unlimited members)
+* **mobile:** rename Unlimited passes to Unlimited membership across the app
+
+### Bug Fixes
+
+* **mobile:** apply over-the-air updates on launch and show the restart banner only for updates published while the app is running
+* **mobile:** keep cancellation offers on Entry pack visits and show reservation settlement details in booking history
+* **mobile:** keep pass offer cards and the savings footer readable on narrow screens and the web
+
 ## [0.2.7](https://github.com/totalolage/deskohub-site/compare/mobile-v0.2.6...mobile-v0.2.7) (2026-11-22)
 
 ### Bug Fixes

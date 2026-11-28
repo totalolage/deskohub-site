@@ -1,0 +1,110 @@
+name: Mobile OTA update
+
+# Publishes the mobile app's JavaScript and assets to the production Expo
+# Updates server whenever a commit on main changes files that ship in the
+# mobile bundle. Docs, tests, release scripts, and website-only changes do not
+# trigger this workflow.
+#
+# Installed builds only receive an update when their embedded native runtime
+# fingerprint matches main's resolved fingerprint; native config or native
+# module changes still require a tagged `mobile-v*` APK release.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/mobile-ota.yml"
+      - "apps/deskohub-mobile/app/**"
+      - "apps/deskohub-mobile/assets/**"
+      - "apps/deskohub-mobile/code-signing/**"
+      - "apps/deskohub-mobile/messages/**"
+      - "apps/deskohub-mobile/modules/**"
+      - "apps/deskohub-mobile/plugins/**"
+      - "apps/deskohub-mobile/project.inlang/**"
+      - "apps/deskohub-mobile/src/**"
+      - "apps/deskohub-mobile/app.config.ts"
+      - "apps/deskohub-mobile/app.json"
+      - "apps/deskohub-mobile/eas.json"
+      - "apps/deskohub-mobile/index.ts"
+      - "apps/deskohub-mobile/package.json"
+      - "apps/deskohub-mobile/tsconfig.json"
+      - "packages/brand-motion/src/**"
+      - "packages/brand-motion/package.json"
+      - "packages/brand-tokens/src/**"
+      - "packages/brand-tokens/package.json"
+      - "packages/i18n/messages/reservations/**"
+      - "packages/i18n/src/**"
+      - "packages/i18n/package.json"
+      - "packages/phone-number/src/**"
+      - "packages/phone-number/package.json"
+      - "packages/reservation/src/**"
+      - "packages/reservation/package.json"
+      - "packages/standard-schema/src/**"
+      - "packages/standard-schema/package.json"
+      - "packages/test-email/src/**"
+      - "packages/test-email/package.json"
+      - "packages/workspace-customer-api/src/**"
+      - "packages/workspace-customer-api/package.json"
+      - "patches/**"
+      - "!**/*.md"
+      - "!**/*.test.*"
+      - "!**/*.spec.*"
+      - "!**/testing/**"
+      - "!packages/brand-tokens/src/brand-theme.css"
+      - "!packages/i18n/src/action.ts"
+      - "!packages/i18n/src/next.ts"
+      - "!packages/i18n/src/request-locale.ts"
+      - "!packages/workspace-customer-api/src/*.golden.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: mobile-ota-main
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    # Holds only MOBILE_UPDATES_PUBLISH_TOKEN and BLOB_READ_WRITE_TOKEN, locked
+    # to branch main. Never uses mobile-release (which holds the Android
+    # signing keystore).
+    environment: mobile-ota
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Matches eas.json's production profile so the resolved fingerprint matches
+    # release-signed APKs.
+    env:
+      MOBILE_UPDATES_CODE_SIGNING: required
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.2
+
+      - run: bun install --frozen-lockfile
+
+      - name: Generate the app sources the APK build generated
+        working-directory: apps/deskohub-mobile
+        run: bun run eas-build-post-install
+
+      - name: Publish the over-the-air update
+        working-directory: apps/deskohub-workspace
+        env:
+          MOBILE_UPDATES_PUBLISH_TOKEN: ${{ secrets.MOBILE_UPDATES_PUBLISH_TOKEN }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          EXPO_PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_PROJECT_TOKEN }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+        run: bun scripts/publish-mobile-update.ts --project ../deskohub-mobile --target https://workspace.deskohub.cz

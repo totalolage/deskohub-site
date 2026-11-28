@@ -50,19 +50,9 @@ Before planning an OTA, check that some build can receive it:
   build of that commit before the publish; it then takes the update as a
   customer's app would.
 
-The `ota-update` job of `mobile-release.yml` publishes the tagged commit to
-production after its release is published. It first runs the app's
-`eas-build-post-install` script, the hook in which EAS generated the APK
-build's untracked sources (the Paraglide catalogs); without them `expo export`
-fails to resolve `./paraglide/messages.js`. Keep the job's generation steps
-equal to that hook. It then checks that the APK's `assets/fingerprint` equals
-the runtime version the commit resolves, and fails instead of publishing an
-update no build can receive. A failed publish leaves the release alone; rerun
-only that job. A JavaScript-only fix therefore ships as a new patch release.
-Expo's default fingerprint preset ignores the version fields, so installed apps
-of earlier releases get that update whenever nothing native changed between
-them; after a native change they keep their old runtime until the customer
-installs the new APK, which the update banner offers.
+`.github/workflows/mobile-ota.yml` automatically publishes an over-the-air update on pushes to `main` whenever files that ship in the mobile bundle change (excluding docs, tests, release scripts, and website-only changes), and can also be run via `workflow_dispatch` on `main`. It runs in the `mobile-ota` GitHub environment, which is locked to branch `main` and holds only `MOBILE_UPDATES_PUBLISH_TOKEN` and `BLOB_READ_WRITE_TOKEN` (never the Android release keystore). `apps/deskohub-mobile/scripts/release/mobile-ota-workflow.test.ts` pins its path scoping, production env parity, and isolation from `mobile-release`.
+
+The `ota-update` job of `mobile-release.yml` also publishes the tagged commit to production after its release is published. It first runs the app's `eas-build-post-install` script, the hook in which EAS generated the APK build's untracked sources (the Paraglide catalogs); without them `expo export` fails to resolve `./paraglide/messages.js`. Keep both workflows' generation steps equal to that hook. The release job also checks that the APK's `assets/fingerprint` equals the runtime version the commit resolves, and fails instead of publishing an update no build can receive. A failed publish leaves the release alone; rerun only that job. A JavaScript-only fix on `main` reaches installed apps automatically through `mobile-ota.yml` whenever nothing native changed since their APK; after a native change they keep their old runtime until the customer installs the new APK, which the update banner offers.
 
 A manual publish runs from `apps/deskohub-workspace`:
 
