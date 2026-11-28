@@ -41,6 +41,7 @@
         "$TURBO_ROOT$/biome.json",
         "$TURBO_ROOT$/lint/**",
         "$TURBO_ROOT$/apps/deskohub-workspace/features/mobile-updates/code-signing-certificate.pem",
+        "$TURBO_ROOT$/.github/workflows/mobile-ota.yml",
         "$TURBO_ROOT$/.github/workflows/mobile-release.yml"
       ],
       "dependsOn": ["$TURBO_EXTENDS$", "i18n:compile"]

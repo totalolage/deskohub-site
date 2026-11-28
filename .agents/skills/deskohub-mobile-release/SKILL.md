@@ -5,7 +5,7 @@ description: Mobile release, Android APK, mobile-v tag, mobile-release.yml, vers
 
 # Deskohub mobile release
 
-`.github/workflows/mobile-release.yml` builds the release-signed APK with `eas build --local` and publishes it as the GitHub Release `mobile: vX.Y.Z` with the asset `deskohub-X.Y.Z.apk`. CI and local builds both run `apps/deskohub-mobile/scripts/release/mobile-release.ts`; change the build there, not in the workflow. OTA publishing and rollback are in [OTA updates](references/ota-updates.md). App layout, dev clients, the emulator, `/app/`, auth and analytics are in the `deskohub-mobile` skill.
+`.github/workflows/mobile-release.yml` builds the release-signed APK with `eas build --local` and publishes it as the GitHub Release `mobile: vX.Y.Z` with the asset `deskohub-X.Y.Z.apk`. `.github/workflows/mobile-ota.yml` automatically publishes over-the-air JS/asset updates on pushes to `main` that touch files shipped in the mobile bundle (using the `main`-only `mobile-ota` GitHub environment, separate from `mobile-release`). CI and local builds both run `apps/deskohub-mobile/scripts/release/mobile-release.ts`; change the build there, not in the workflow. OTA publishing and rollback are in [OTA updates](references/ota-updates.md). App layout, dev clients, the emulator, `/app/`, auth and analytics are in the `deskohub-mobile` skill.
 
 ## Versions
 
